@@ -3,337 +3,637 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Neon Battle Multi</title>
+    <title>ULTIMATE GAME PACK</title>
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;900&family=Roboto:wght@300&display=swap" rel="stylesheet">
     <style>
-        /* CSS: Интерфейс и Стиль */
-        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
+        :root { --p1: #00ffff; --p2: #ff0055; --bg: #050510; --ui-bg: rgba(0,0,0,0.85); }
+        * { box-sizing: border-box; touch-action: none; user-select: none; outline: none; -webkit-tap-highlight-color: transparent; }
         
-        * { box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
         body { 
-            margin: 0; overflow: hidden; background: #050505; color: #fff; 
-            font-family: 'Orbitron', sans-serif; touch-action: none;
+            margin: 0; padding: 0; overflow: hidden; background: var(--bg); 
+            font-family: 'Orbitron', sans-serif; color: white;
         }
 
+        /* --- UI Screens --- */
         .screen {
-            position: absolute; width: 100%; height: 100%; background: #050505;
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
-            z-index: 10; transition: opacity 0.5s;
+            background: radial-gradient(circle at center, #1a1a2e 0%, #000 100%);
+            z-index: 100; transition: opacity 0.5s;
         }
-        .hidden { display: none !important; }
+        .hidden { opacity: 0; pointer-events: none; z-index: -1; display: none !important; }
 
-        h1 { font-size: 2.5rem; text-shadow: 0 0 20px #0ff; margin-bottom: 40px; text-align: center; }
+        h1 { font-size: 2.5rem; text-shadow: 0 0 20px var(--p1); text-transform: uppercase; margin: 0 0 30px 0; text-align: center;}
+        h2 { color: #aaa; font-family: 'Roboto'; font-size: 1rem; margin-bottom: 20px; }
         
+        .panel { 
+            background: rgba(255,255,255,0.05); padding: 20px; border-radius: 15px; 
+            border: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; align-items: center; gap: 10px;
+            backdrop-filter: blur(10px); width: 90%; max-width: 400px;
+        }
+
         button {
-            background: linear-gradient(45deg, #00f, #f0f); border: none; padding: 20px 40px;
-            font-family: 'Orbitron', sans-serif; color: white; font-size: 1.2rem;
-            margin: 10px; border-radius: 5px; box-shadow: 0 0 15px #00f; cursor: pointer;
-            width: 80%; max-width: 300px; text-transform: uppercase;
+            width: 100%; padding: 18px; font-size: 1.1rem; border: none; border-radius: 8px;
+            background: linear-gradient(90deg, #222, #333); color: white; font-family: 'Orbitron'; cursor: pointer;
+            box-shadow: 0 4px 0 #000; transition: transform 0.1s; text-transform: uppercase;
         }
-        button:active { transform: scale(0.95); box-shadow: 0 0 5px #00f; }
+        button:active { transform: translateY(4px); box-shadow: none; }
+        button.primary { background: linear-gradient(45deg, var(--p1), #0088ff); color: #000; font-weight: 900; }
+        button.secondary { background: #333; border: 1px solid #555; }
+        
         input { 
-            padding: 15px; font-size: 1.2rem; background: #111; border: 1px solid #0ff; 
-            color: #0ff; text-align: center; width: 80%; margin-bottom: 20px; font-family: 'Orbitron';
+            width: 100%; padding: 15px; font-size: 1.2rem; background: #000; border: 1px solid #444; color: var(--p1);
+            text-align: center; border-radius: 8px; font-family: monospace; letter-spacing: 2px;
         }
 
-        /* ИГРОВОЙ UI */
-        canvas { display: block; }
-        
-        #hud {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;
+        /* --- DEBUG CONSOLE (ОЧЕНЬ ВАЖНО) --- */
+        #debug-console {
+            position: absolute; top: 0; left: 0; width: 100%; padding: 5px;
+            font-family: monospace; font-size: 0.7rem; color: #ffff00;
+            background: rgba(0,0,0,0.5); pointer-events: none; z-index: 1000; white-space: pre-wrap;
         }
-        .top-bar {
-            display: flex; justify-content: space-between; padding: 15px; 
-            font-size: 1.2rem; font-weight: bold; text-shadow: 1px 1px 2px #000;
-        }
-        
-        /* Стики (только для Шутера) */
-        #sticks-layer { position: absolute; bottom: 20px; width: 100%; display: flex; justify-content: space-between; padding: 0 30px; }
-        .stick-zone { width: 100px; height: 100px; border: 2px dashed rgba(255,255,255,0.1); border-radius: 50%; position: relative; pointer-events: auto; }
-        .stick-knob { width: 40px; height: 40px; background: rgba(0,255,255,0.5); border-radius: 50%; position: absolute; top:50%; left:50%; transform: translate(-50%,-50%); }
 
-        /* Карточки (только для Clash) */
-        #cards-layer {
-            position: absolute; bottom: 10px; width: 100%; display: flex; 
-            justify-content: center; pointer-events: auto; gap: 10px;
+        /* --- GAME UI --- */
+        #game-layer { position: relative; width: 100%; height: 100%; overflow: hidden; }
+        canvas { display: block; width: 100%; height: 100%; }
+
+        .hud-top {
+            position: absolute; top: 10px; width: 100%; padding: 0 20px;
+            display: flex; justify-content: space-between; font-size: 1.5rem; font-weight: bold;
+            text-shadow: 2px 2px 0 #000; pointer-events: none;
         }
-        .card-btn {
-            width: 70px; height: 90px; background: #222; border: 2px solid #555; border-radius: 8px;
+
+        /* Controls */
+        #controls-stick { position: absolute; bottom: 20px; left: 20px; pointer-events: auto; }
+        #controls-action { position: absolute; bottom: 20px; right: 20px; pointer-events: auto; }
+        
+        .joystick-base {
+            width: 120px; height: 120px; border-radius: 50%; 
+            background: rgba(255, 255, 255, 0.05); border: 2px dashed rgba(255,255,255,0.2);
+            position: relative; display: flex; align-items: center; justify-content: center;
+        }
+        .joystick-stick {
+            width: 50px; height: 50px; border-radius: 50%; background: rgba(0, 255, 255, 0.5);
+            box-shadow: 0 0 15px var(--p1); transform: translate(0,0); position: absolute;
+        }
+        
+        /* Clash Cards */
+        #card-dock {
+            position: absolute; bottom: 10px; width: 100%; display: flex; justify-content: center; gap: 10px;
+            pointer-events: auto;
+        }
+        .card {
+            width: 60px; height: 80px; background: #222; border: 2px solid #555; border-radius: 6px;
             display: flex; flex-direction: column; align-items: center; justify-content: space-around;
-            cursor: pointer; position: relative; pointer-events: auto;
+            font-size: 0.7rem; position: relative; cursor: pointer; transition: 0.2s;
         }
-        .card-btn.ready { border-color: #0f0; box-shadow: 0 0 10px #0f0; background: #002200; }
-        .card-cost { position: absolute; top:-10px; right:-10px; background: #a0f; border-radius: 50%; width: 25px; height: 25px; display:flex; justify-content:center; align-items:center; font-size: 0.8rem; }
-        .elixir-bar-bg {
-            position: absolute; bottom: 110px; left: 10%; width: 80%; height: 10px; background: #333; border:1px solid white;
-        }
-        .elixir-fill { height: 100%; background: #d0f; width: 0%; transition: width 0.2s; }
-        
+        .card.active { border-color: #0f0; box-shadow: 0 0 10px #0f0; background: #002200; transform: translateY(-5px); }
+        .cost-bubble { position: absolute; top: -5px; right: -5px; width: 20px; height: 20px; background: #a0f; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; }
+
     </style>
 </head>
 <body>
 
-    <!-- Меню -->
-    <div id="screen-menu" class="screen">
-        <h1>NEON VERSUS</h1>
-        <button onclick="Game.startHost()">⚡ HOST GAME</button>
-        <button onclick="UI.show('screen-lobby')" style="background:linear-gradient(45deg,#444,#666)">🔗 JOIN GAME</button>
+<!-- SYSTEM LOGS -->
+<div id="debug-console">Build: v3.0 Ultimate | Status: Init...</div>
+
+<!-- SCREEN 1: MENU -->
+<div id="scr-menu" class="screen">
+    <h1>GamePack v3.0</h1>
+    <div class="panel">
+        <button class="primary" onclick="Net.host()">👑 Создать Сервер</button>
+        <div style="width:100%; height:1px; background:#444; margin:10px 0;"></div>
+        <button class="secondary" onclick="UI.show('scr-lobby')">🤝 Подключиться</button>
+        <p style="font-size:0.8rem; color:#666">Работает через интернет (P2P)</p>
     </div>
+</div>
 
-    <!-- Ломми -->
-    <div id="screen-lobby" class="screen hidden">
-        <h1>Connect</h1>
-        <input type="text" id="joinId" placeholder="HOST ID">
-        <button onclick="Game.joinGame()">GO</button>
-        <button onclick="UI.show('screen-menu')" style="background:#333">Back</button>
+<!-- SCREEN 2: LOBBY -->
+<div id="scr-lobby" class="screen hidden">
+    <h2>ВВОД ID СЕРВЕРА</h2>
+    <div class="panel">
+        <input type="text" id="join-inp" placeholder="Вставьте ID сюда...">
+        <button class="primary" onclick="Net.join()">Подключиться</button>
+        <button class="secondary" onclick="UI.show('scr-menu')">Назад</button>
     </div>
+</div>
 
-    <!-- Выбор режима (Хост) -->
-    <div id="screen-mode" class="screen hidden">
-        <h1>Select Mode</h1>
-        <button onclick="Game.selectMode('tanks')">🚜 Neon Tanks</button>
-        <button onclick="Game.selectMode('clash')">⚔️ Cyber Clash</button>
-        <div id="host-msg" style="color:#aaa; margin-top:20px; font-size:0.9rem">Wait for player 2...</div>
-    </div>
-
-    <!-- ИГРА -->
-    <div id="screen-game" class="screen hidden">
-        <canvas id="ctx"></canvas>
-        <div id="hud">
-            <div class="top-bar">
-                <span style="color:#0ff">P1: <span id="score1">0</span></span>
-                <span style="color:#f0f">P2: <span id="score2">0</span></span>
-            </div>
-            
-            <!-- Управление для танков -->
-            <div id="sticks-layer" class="hidden">
-                <div class="stick-zone" id="joyL"><div class="stick-knob"></div></div>
-                <div class="stick-zone" id="joyR" style="border-color: rgba(255,0,255,0.2)"><div class="stick-knob" style="background:rgba(255,0,255,0.5)"></div></div>
-            </div>
-
-            <!-- Управление для Clash -->
-            <div id="elixir-ui" class="hidden">
-                <div class="elixir-bar-bg"><div class="elixir-fill" id="e-fill"></div></div>
-            </div>
-            <div id="cards-layer" class="hidden">
-                <!-- Кнопки создаются JS-ом -->
-            </div>
+<!-- SCREEN 3: HOST ROOM -->
+<div id="scr-room" class="screen hidden">
+    <h2>Комната Ожидания</h2>
+    <div class="panel">
+        <div id="my-id-display" style="color:var(--p1); font-size:1.5rem; word-break: break-all; text-align:center;">...</div>
+        <div style="font-size:0.8rem; color:#aaa">Скопируй этот код и скинь другу</div>
+        <div id="player-status" style="margin-top:20px; font-weight:bold; color:orange">Ожидание игрока 2...</div>
+        <hr style="width:100%; border-color:#333">
+        <div id="game-selector" class="hidden" style="width:100%">
+            <p>Выберите игру:</p>
+            <button class="primary" onclick="Game.start('tanks')" style="margin-bottom:10px">🚜 NEON TANKS</button>
+            <button class="primary" onclick="Game.start('clash')" style="background: linear-gradient(45deg, #aa00ff, #ff00aa)">⚔️ CYBER CLASH</button>
+            <button class="primary" onclick="Game.start('dots')" style="margin-top:10px; background:#444">🔴 DOT HUNTER</button>
         </div>
     </div>
-<script>
-// --- ИСПРАВЛЕННАЯ ВЕРСИЯ СКРИПТА С ВЫВОДОМ ОШИБОК ---
+</div>
 
-// КОНФИГУРАЦИЯ
-const COLORS = { p1: '#00ffff', p2: '#ff00ff', wall: '#ffffff' };
+<!-- SCREEN 4: GAME -->
+<div id="scr-game" class="hidden">
+    <div id="game-layer">
+        <canvas id="ctx"></canvas>
+        <div class="hud-top">
+            <span style="color:var(--p1)">P1: <span id="s1">0</span></span>
+            <div id="game-timer" style="color:white; font-size:1rem; opacity:0.5">00:00</div>
+            <span style="color:var(--p2)">P2: <span id="s2">0</span></span>
+        </div>
+
+        <!-- Sticks UI -->
+        <div id="controls-stick">
+            <div class="joystick-base" id="joy-move"><div class="joystick-stick"></div></div>
+        </div>
+        <div id="controls-action">
+            <div class="joystick-base" id="joy-act" style="border-color:rgba(255,0,85,0.3)"><div class="joystick-stick" style="background:rgba(255,0,85,0.5)"></div></div>
+        </div>
+        
+        <!-- Clash UI -->
+        <div id="clash-ui" class="hidden">
+            <div style="position:absolute; bottom:120px; left:10px; width:20px; height:150px; background:#222; border:1px solid #555">
+                <div id="elixir-fill" style="width:100%; height:0%; background:#a0f; position:absolute; bottom:0; transition:0.2s"></div>
+            </div>
+            <div id="card-dock"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+// === GLOBAL LOG SYSTEM (Для отладки на телефоне) ===
+function log(msg) {
+    const d = document.getElementById('debug-console');
+    const t = new Date().toLocaleTimeString();
+    d.innerHTML = `[${t}] ${msg}\n` + d.innerHTML;
+    if(d.innerHTML.length > 500) d.innerHTML = d.innerHTML.substring(0, 500);
+}
+window.onerror = function(msg, url, line) { log("ERR: " + msg + " at " + line); };
+
+// === NETWORK MODULE (PEERJS WRAPPER) ===
+const Net = {
+    peer: null, conn: null, role: null, id: null,
+    
+    host: () => {
+        Net.role = 'host';
+        Net.initPeer();
+    },
+    join: () => {
+        const id = document.getElementById('join-inp').value.trim();
+        if(!id) return alert("Введите ID!");
+        Net.role = 'client';
+        Net.initPeer(id);
+    },
+    initPeer: (connectToId = null) => {
+        log("Init Peer...");
+        // ВАЖНО: Мы используем облачный сервер PeerJS. Иногда он перегружен.
+        Net.peer = new Peer({ debug: 1 });
+        
+        Net.peer.on('open', (id) => {
+            Net.id = id;
+            log(`MY ID: ${id}`);
+            if(Net.role === 'host') {
+                UI.show('scr-room');
+                document.getElementById('my-id-display').innerText = id;
+            } else if(connectToId) {
+                Net.connect(connectToId);
+            }
+        });
+
+        Net.peer.on('connection', (c) => {
+            log("Incoming connection...");
+            Net.conn = c;
+            Net.setupConn();
+        });
+
+        Net.peer.on('error', (err) => {
+            log(`PEER ERROR: ${err.type}`);
+            alert(`Ошибка сети: ${err.type}. Попробуйте Wi-Fi или обновите.`);
+        });
+        
+        Net.peer.on('disconnected', () => {
+             log("Peer Disconnected. Reconnecting...");
+             Net.peer.reconnect();
+        });
+    },
+    connect: (destId) => {
+        log(`Connecting to ${destId}...`);
+        Net.conn = Net.peer.connect(destId);
+        Net.setupConn();
+    },
+    setupConn: () => {
+        Net.conn.on('open', () => {
+            log("CONNECTED TO PARTNER!");
+            if(Net.role === 'host') {
+                document.getElementById('player-status').innerText = "Игрок 2 подключен!";
+                document.getElementById('player-status').style.color = "#0f0";
+                document.getElementById('game-selector').classList.remove('hidden');
+            } else {
+                UI.show('scr-lobby');
+                document.querySelector('#scr-lobby h2').innerText = "Ожидаем выбора игры...";
+            }
+        });
+
+        Net.conn.on('data', (data) => {
+            if(data.type === 'START') { Game.init(data.mode); }
+            if(data.type === 'STATE') { Game.syncState(data.st); }
+            if(data.type === 'INPUT') { Logic.p2Inp = data.val; }
+        });
+        
+        Net.conn.on('close', () => { alert("Второй игрок отключился!"); location.reload(); });
+    }
+};
+
+// === GAME ENGINE ===
+const CONFIG = {
+    w: 0, h: 0, 
+    c: { p1: '#0ff', p2: '#f05', wall: '#ddd', bullet: '#ffaa00' }
+};
+
+const Input = { 
+    x:0, y:0, ax:0, ay:0, action: false, spawnIdx: null,
+    reset: () => { Input.x=0; Input.y=0; Input.ax=0; Input.ay=0; Input.action=false; Input.spawnIdx=null; } 
+};
 
 const Game = {
-    role: null, conn: null, peer: null, mode: null,
-    width: 0, height: 0, 
-    loopId: null,
+    mode: null, running: false, 
+    ctx: document.getElementById('ctx').getContext('2d'),
 
-    startHost: () => {
-        Game.role = 'host';
-        const btn = document.querySelector('button');
-        btn.innerText = 'Подключение к серверу...';
+    start: (mode) => {
+        if(Net.conn) Net.conn.send({ type: 'START', mode: mode });
+        Game.init(mode);
+    },
+    init: (mode) => {
+        log(`Starting Game: ${mode}`);
+        Game.mode = mode;
+        CONFIG.w = window.innerWidth; CONFIG.h = window.innerHeight;
+        document.getElementById('ctx').width = CONFIG.w;
+        document.getElementById('ctx').height = CONFIG.h;
         
-        // ВАЖНО: Обработка ошибок при создании Peer
-        try {
-            Game.peer = new Peer({ debug: 2 });
-        } catch(e) { alert("Ошибка создания Peer: " + e); }
-
-        Game.peer.on('open', id => {
-            UI.show('screen-mode');
-            document.getElementById('host-msg').innerHTML = 
-                `Ваш ID: <b style="color:#fff;font-size:1.5rem">${id}</b><br>Передайте его другу!`;
-        });
+        UI.show('scr-game');
         
-        // ВЫВОД ОШИБОК НА ЭКРАН
-        Game.peer.on('error', (err) => {
-            alert("ОШИБКА СЕТИ: " + err.type + "\n" + err);
-            btn.innerText = 'Ошибка (попробуйте VPN)';
-        });
-
-        Game.peer.on('connection', c => {
-            Game.conn = c;
-            Game.setupConn();
-            alert("Игрок 2 подключился!");
-        });
-    },
-
-    joinGame: () => {
-        const id = document.getElementById('joinId').value;
-        if(!id) return alert("Введите ID хоста");
+        // Setup HUD
+        document.getElementById('controls-stick').classList.toggle('hidden', mode === 'clash');
+        document.getElementById('controls-action').classList.toggle('hidden', mode === 'clash' || mode === 'dots');
+        document.getElementById('clash-ui').classList.toggle('hidden', mode !== 'clash');
         
-        Game.role = 'client';
-        try {
-            Game.peer = new Peer();
-        } catch(e) { alert("Ошибка Peer: " + e); }
-
-        Game.peer.on('error', err => alert("Не удалось подключиться: " + err));
-
-        Game.peer.on('open', myId => {
-            Game.conn = Game.peer.connect(id);
-            if(!Game.conn) { alert("Неверный ID или хост оффлайн"); return; }
-            Game.setupConn();
-        });
-    },
-
-    setupConn: () => {
-        Game.conn.on('open', () => {
-             console.log("Connected!");
-        });
-        Game.conn.on('data', d => {
-            if(d.type === 'START') Game.initGame(d.mode);
-            if(d.type === 'WORLD') { Renderer.state = d.state; if(Game.role==='client') Renderer.draw(); }
-            if(d.type === 'INPUT' && Game.role==='host') Logic.p2Input = d.input;
-        });
-        Game.conn.on('close', () => alert("Соединение потеряно!"));
-    },
-
-    selectMode: (m) => {
-        if(!Game.conn || !Game.conn.open) return alert("Ждем подключения второго игрока...");
-        Game.conn.send({type:'START', mode:m});
-        Game.initGame(m);
-    },
-
-    initGame: (m) => {
-        Game.mode = m;
-        UI.show('screen-game');
-        const c = document.getElementById('ctx');
-        Game.width = window.innerWidth;
-        Game.height = window.innerHeight;
-        c.width = Game.width; c.height = Game.height;
-
-        document.getElementById('sticks-layer').classList.toggle('hidden', m !== 'tanks');
-        document.getElementById('cards-layer').classList.toggle('hidden', m !== 'clash');
-        document.getElementById('elixir-ui').classList.toggle('hidden', m !== 'clash');
+        if(mode === 'clash') Clash.initUI();
         
-        if(m === 'clash') ClashLogic.initUI();
-        Logic.reset();
-        if(Game.role === 'host') Game.loop();
+        if(Net.role === 'host') Logic.init();
+        Game.running = true;
+        Game.loop();
     },
-
     loop: () => {
-        Logic.update();
-        if(Game.conn && Game.conn.open) {
-            Game.conn.send({type:'WORLD', state: Logic.state});
-        }
-        Renderer.state = Logic.state; 
-        Renderer.draw();
-        Game.loopId = requestAnimationFrame(Game.loop);
-    }
-};
-
-// --- ФИЗИКА (БЕЗ ИЗМЕНЕНИЙ, ОСТАВИЛ БАЗОВУЮ) ---
-const Logic = {
-    state: {},
-    p1Input: {x:0, y:0, aimX:0, aimY:0, shoot:false, spawn: null},
-    p2Input: {x:0, y:0, aimX:0, aimY:0, shoot:false, spawn: null},
-    reset: () => {
-        Logic.state = {
-            tanks: [ {x: 100, y: Game.height/2, hp:100, cd:0, score:0}, {x: Game.width-100, y: Game.height/2, hp:100, cd:0, score:0} ],
-            bullets: [], walls: [], units: [], elixir: { p1: 0, p2: 0 }, mode: Game.mode, time: 0
-        };
-        if(Game.mode === 'tanks') {
-            for(let i=0; i<8; i++) Logic.state.walls.push({x: Math.random()*Game.width, y: Math.random()*Game.height, w: 20, h: 100});
-        }
-    },
-    update: () => {
-        Logic.state.time++;
-        if(Logic.state.mode === 'tanks') TanksLogic.tick(); else ClashLogic.tick();
-    }
-};
-
-const TanksLogic = {
-    tick: () => {
-        const s = Logic.state; const sp = 4;
-        const p1 = s.tanks[0]; p1.x += Logic.p1Input.x * sp; p1.y += Logic.p1Input.y * sp;
-        const p2 = s.tanks[1]; p2.x += Logic.p2Input.x * sp; p2.y += Logic.p2Input.y * sp;
+        if(!Game.running) return;
+        requestAnimationFrame(Game.loop);
         
-        [Logic.p1Input, Logic.p2Input].forEach((inp, i) => {
-            let t = s.tanks[i];
-            if(inp.shoot && t.cd <= 0) {
-                s.bullets.push({x:t.x, y:t.y, vx:inp.aimX*15, vy:inp.aimY*15, o:i}); t.cd = 20;
-            }
-            if(t.cd>0) t.cd--;
-        });
-        
-        for(let i=s.bullets.length-1; i>=0; i--) {
-            let b = s.bullets[i]; b.x+=b.vx; b.y+=b.vy;
-            let target = s.tanks[b.o === 0 ? 1 : 0];
-            if(Math.hypot(b.x-target.x, b.y-target.y) < 30) {
-                s.tanks[b.o].score++; b.x = -1000;
-            }
-        }
-    }
-};
-
-const ClashLogic = {
-    cards: [{name:'Tank', cost:3, hp:200}, {name:'Run', cost:2, hp:50}],
-    initUI: () => {
-        const c = document.getElementById('cards-layer'); c.innerHTML='';
-        ClashLogic.cards.forEach((k,i)=>{
-            let b=document.createElement('div'); b.className='card-btn'; 
-            b.innerHTML=`<b>${k.cost}</b>${k.name}`;
-            b.onclick=()=>Logic.p1Input.spawn=i; c.appendChild(b);
-        });
-    },
-    tick: () => { /* Упрощенная логика clash для теста */
-        const s = Logic.state; 
-        if(s.time%60===0) { s.elixir.p1++; s.elixir.p2++; }
-        
-        if(Logic.p1Input.spawn!==null && s.elixir.p1 >= ClashLogic.cards[Logic.p1Input.spawn].cost) {
-             s.units.push({x:50, y:200+Math.random()*300, owner:0, c:'#0ff'}); 
-             s.elixir.p1-=ClashLogic.cards[Logic.p1Input.spawn].cost; 
-             Logic.p1Input.spawn=null;
-        }
-        // AI движение
-        s.units.forEach(u => u.x += (u.owner===0?2:-2));
-    }
-};
-
-// --- DRAW ---
-const Renderer = {
-    state: null,
-    draw: () => {
-        if(!Renderer.state) return;
-        const ctx = document.getElementById('ctx').getContext('2d');
-        const s = Renderer.state;
-        ctx.fillStyle='#050505'; ctx.fillRect(0,0,Game.width,Game.height);
-        
-        if(s.mode === 'tanks') {
-             ctx.fillStyle='#fff'; s.walls.forEach(w=>ctx.fillRect(w.x,w.y,w.w,w.h));
-             Renderer.drawP(s.tanks[0], COLORS.p1); Renderer.drawP(s.tanks[1], COLORS.p2);
-             ctx.fillStyle='orange'; s.bullets.forEach(b=>{ctx.beginPath();ctx.arc(b.x,b.y,5,0,7);ctx.fill()});
+        if(Net.role === 'host') {
+            Logic.update();
+            Net.conn.send({ type: 'STATE', st: Logic.state });
+            Renderer.render(Logic.state);
         } else {
-             ctx.fillStyle=COLORS.p1; s.units.forEach(u=>{ctx.beginPath();ctx.arc(u.x,u.y,10,0,7);ctx.fill()});
-             document.getElementById('e-fill').style.width = (s.elixir.p1*10)+'%';
+            // Клиент просто шлет ввод
+            if(Game.mode !== 'clash')
+                Net.conn.send({ type: 'INPUT', val: Input });
+            else
+                Net.conn.send({ type: 'INPUT', val: { spawnIdx: Input.spawnIdx } });
+            
+            // Если была карточка - сбрасываем нажатие после отправки
+            Input.spawnIdx = null; 
         }
-        document.getElementById('score1').innerText = s.tanks[0].score;
-        document.getElementById('score2').innerText = s.tanks[1].score;
     },
-    drawP: (p,c) => { ctx=document.getElementById('ctx').getContext('2d'); ctx.fillStyle=c; ctx.fillRect(p.x-20,p.y-20,40,40); }
+    syncState: (state) => {
+        Renderer.render(state);
+    }
 };
 
-// UI UTILS
-const UI = { show: (id) => { document.querySelectorAll('.screen').forEach(s=>s.classList.add('hidden')); document.getElementById(id).classList.remove('hidden'); }};
+// === GAME LOGIC (HOST ONLY) ===
+const Logic = {
+    state: {}, p2Inp: {}, 
+    
+    init: () => {
+        Logic.state = {
+            t: 0, p1s: 0, p2s: 0, 
+            ents: [], fx: [], mode: Game.mode
+        };
+        const s = Logic.state;
 
-// JOYSTICKS
-function setupJoy(id,cb) {
-    const el=document.getElementById(id); 
-    el.addEventListener('touchmove',e=>{ e.preventDefault(); 
-        let rect=el.getBoundingClientRect(); 
-        let t=e.touches[0]; 
-        let dx=(t.clientX-rect.left-50)/50; let dy=(t.clientY-rect.top-50)/50;
-        el.querySelector('div').style.transform=`translate(${dx*25}px,${dy*25}px)`;
-        cb(dx, dy); 
-    });
-    el.addEventListener('touchend', ()=>{ el.querySelector('div').style.transform='none'; cb(0,0); });
+        if(Game.mode === 'tanks') {
+            s.p1 = { x: 100, y: CONFIG.h/2, hp: 100, cd: 0, angle: 0 };
+            s.p2 = { x: CONFIG.w-100, y: CONFIG.h/2, hp: 100, cd: 0, angle: Math.PI };
+            s.map = [];
+            // Generate Map
+            for(let i=0; i<10; i++) 
+                s.map.push({x: Math.random()*CONFIG.w, y: Math.random()*CONFIG.h, w: 30+Math.random()*50, h: 30+Math.random()*80});
+        }
+        else if(Game.mode === 'clash') {
+             s.elixir = { p1: 5, p2: 5 };
+        }
+        else if(Game.mode === 'dots') {
+             s.p1 = { x: 200, y: 300, r: 15 };
+             s.p2 = { x: 600, y: 300, r: 15 };
+             s.food = [];
+        }
+    },
+
+    update: () => {
+        const s = Logic.state; s.t++;
+        const i1 = Input; const i2 = Logic.p2Inp;
+
+        if(s.mode === 'tanks') Tanks.upd(s, i1, i2);
+        else if(s.mode === 'clash') Clash.upd(s, i1, i2);
+        else if(s.mode === 'dots') Dots.upd(s, i1, i2);
+
+        // Physics Cleanup
+        s.ents = s.ents.filter(e => e.active);
+    }
+};
+
+// --- MODE: TANKS ---
+const Tanks = {
+    upd: (s, i1, i2) => {
+        // Move
+        const spd = 4;
+        [ {p:s.p1, i:i1}, {p:s.p2, i:i2} ].forEach((obj, idx) => {
+            const p = obj.p; const inp = obj.i;
+            p.x += inp.x * spd; p.y += inp.y * spd;
+            if(Math.abs(inp.ax)+Math.abs(inp.ay) > 0.1) 
+                p.angle = Math.atan2(inp.ay, inp.ax);
+            
+            // Walls Collide
+            p.x = Math.max(0, Math.min(CONFIG.w, p.x));
+            p.y = Math.max(0, Math.min(CONFIG.h, p.y));
+            s.map.forEach(w => {
+                 if(p.x>w.x && p.x<w.x+w.w && p.y>w.y && p.y<w.y+w.h) {
+                     p.x -= inp.x*spd; p.y -= inp.y*spd;
+                 }
+            });
+
+            // Shoot
+            if(p.cd>0) p.cd--;
+            if(inp.action && p.cd <= 0) {
+                s.ents.push({
+                    type: 'bull', owner: idx, 
+                    x: p.x + Math.cos(p.angle)*30, y: p.y + Math.sin(p.angle)*30, 
+                    vx: Math.cos(p.angle)*12, vy: Math.sin(p.angle)*12, active:true
+                });
+                p.cd = 15;
+            }
+        });
+
+        // Bullets
+        s.ents.forEach(b => {
+            b.x += b.vx; b.y += b.vy;
+            if(b.x<0||b.x>CONFIG.w||b.y<0||b.y>CONFIG.h) b.active=false;
+            // Hit Map
+            s.map.forEach(w => {
+                if(b.x>w.x && b.x<w.x+w.w && b.y>w.y && b.y<w.y+w.h) { b.active=false; }
+            });
+            // Hit Player
+            let enemy = b.owner===0 ? s.p2 : s.p1;
+            if(Math.hypot(b.x-enemy.x, b.y-enemy.y) < 25) {
+                b.active = false;
+                s[b.owner===0?'p1s':'p2s']++;
+                enemy.x = Math.random()*CONFIG.w; enemy.y = Math.random()*CONFIG.h; // Respawn
+            }
+        });
+    }
+};
+
+// --- MODE: CLASH ---
+const CARDS = [
+    { name: 'WAR', hp: 50, spd: 2, c: 2, dmg: 1, type: 'a' },
+    { name: 'TANK', hp: 150, spd: 1, c: 4, dmg: 2, type: 'b' },
+    { name: 'FAST', hp: 30, spd: 5, c: 2, dmg: 3, type: 'c' }
+];
+
+const Clash = {
+    initUI: () => {
+        const d = document.getElementById('card-dock'); d.innerHTML = '';
+        CARDS.forEach((c, idx) => {
+            let el = document.createElement('div');
+            el.className = 'card';
+            el.innerHTML = `<div class="cost-bubble">${c.c}</div><div>${c.name}</div>`;
+            el.ontouchstart = () => { Input.spawnIdx = idx; }; 
+            // для мыши тоже
+            el.onmousedown = () => { Input.spawnIdx = idx; };
+            d.appendChild(el);
+        });
+    },
+    upd: (s, i1, i2) => {
+        if(s.t % 60 === 0) { // +1 Elixir/sec
+            if(s.elixir.p1 < 10) s.elixir.p1++;
+            if(s.elixir.p2 < 10) s.elixir.p2++;
+        }
+
+        // Spawn logic
+        const spawn = (owner, idx) => {
+            if(idx === null || idx === undefined) return;
+            const unit = CARDS[idx];
+            const pEl = owner===0?s.elixir.p1:s.elixir.p2;
+            if(pEl >= unit.c) {
+                s.ents.push({
+                    type:'unit', owner:owner, max: unit.hp, hp: unit.hp, 
+                    spd: unit.spd, dmg: unit.dmg, active:true,
+                    x: owner===0 ? 40 : CONFIG.w-40,
+                    y: 100 + Math.random()*(CONFIG.h-200)
+                });
+                if(owner===0) s.elixir.p1 -= unit.c; else s.elixir.p2 -= unit.c;
+            }
+        };
+
+        if(i1 && i1.spawnIdx!==null) { spawn(0, i1.spawnIdx); i1.spawnIdx = null; }
+        if(i2 && i2.spawnIdx!==null) { spawn(1, i2.spawnIdx); Logic.p2Inp.spawnIdx = null; }
+
+        // Logic
+        s.ents.forEach(u => {
+            // Find target
+            let target = null; let minD = 200;
+            s.ents.forEach(e => {
+                if(e.owner !== u.owner) {
+                    let d = Math.hypot(u.x-e.x, u.y-e.y);
+                    if(d < minD) { minD = d; target = e; }
+                }
+            });
+
+            if(target && minD < 30) {
+                if(s.t%20===0) target.hp -= u.dmg;
+            } else {
+                if(target) { // move to target
+                     let a = Math.atan2(target.y-u.y, target.x-u.x);
+                     u.x += Math.cos(a)*u.spd; u.y += Math.sin(a)*u.spd;
+                } else { // forward
+                     u.x += (u.owner===0 ? 1 : -1) * u.spd;
+                }
+            }
+            if(u.hp<=0) u.active=false;
+            if(u.x<0 || u.x>CONFIG.w) {
+                u.active = false;
+                if(u.owner===0) s.p1s++; else s.p2s++;
+            }
+        });
+    }
+};
+
+// --- MODE: DOTS ---
+const Dots = {
+    upd: (s, i1, i2) => {
+        const move = (p, i) => { 
+            p.x+=i.x*4; p.y+=i.y*4; 
+            if(p.x<0)p.x=0; if(p.y<0)p.y=0;
+        };
+        move(s.p1, i1); move(s.p2, i2 || {x:0,y:0});
+
+        // Food gen
+        if(s.t % 30 === 0 && s.food.length < 50) 
+            s.food.push({x:Math.random()*CONFIG.w, y:Math.random()*CONFIG.h, active:true});
+
+        // Eat
+        const check = (p, idx) => {
+            s.food.forEach(f => {
+                if(f.active && Math.hypot(p.x-f.x, p.y-f.y) < p.r) {
+                    f.active = false;
+                    p.r += 0.5;
+                    s[idx===0?'p1s':'p2s']++;
+                }
+            });
+        };
+        check(s.p1, 0); check(s.p2, 1);
+        s.food = s.food.filter(f=>f.active);
+
+        // Win
+        if(s.p1.r > s.p2.r && Math.hypot(s.p1.x-s.p2.x, s.p1.y-s.p2.y) < s.p1.r) s.p1s+=5;
+    }
 }
-setupJoy('joyL', (x,y)=>Logic.p1Input.x=x?x:Logic.p1Input.y=y); // Quick hack binding
-setupJoy('joyR', (x,y)=>{Logic.p1Input.aimX=x; Logic.p1Input.aimY=y; Logic.p1Input.shoot=(Math.abs(x)+Math.abs(y)>0.5)});
 
-window.sendInp = function() { /* Пустышка для совместимости */ };
+
+// === RENDERER ===
+const Renderer = {
+    render: (s) => {
+        if(!s) return;
+        const ctx = Game.ctx;
+        ctx.fillStyle = '#050510'; ctx.fillRect(0,0,CONFIG.w, CONFIG.h);
+
+        // Grid bg
+        ctx.strokeStyle='rgba(255,255,255,0.03)'; ctx.lineWidth=1;
+        for(let i=0; i<CONFIG.w; i+=50) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,CONFIG.h); ctx.stroke(); }
+
+        // HUD Text Update
+        document.getElementById('s1').innerText = s.p1s;
+        document.getElementById('s2').innerText = s.p2s;
+
+        if(s.mode === 'tanks') {
+            // Walls
+            ctx.fillStyle = '#445'; 
+            ctx.shadowBlur=10; ctx.shadowColor='#000';
+            s.map.forEach(w => ctx.fillRect(w.x, w.y, w.w, w.h));
+            ctx.shadowBlur=0;
+            
+            // Tanks
+            Renderer.tank(s.p1, CONFIG.c.p1);
+            Renderer.tank(s.p2, CONFIG.c.p2);
+            
+            // Bullets
+            ctx.fillStyle='#fff';
+            s.ents.forEach(b => {
+                ctx.beginPath(); ctx.arc(b.x, b.y, 4, 0, 7); ctx.fill();
+            });
+        }
+        else if(s.mode === 'clash') {
+            ctx.beginPath(); ctx.strokeStyle='#333'; ctx.moveTo(CONFIG.w/2, 0); ctx.lineTo(CONFIG.w/2, CONFIG.h); ctx.stroke();
+            
+            s.ents.forEach(u => {
+                const c = u.owner===0 ? CONFIG.c.p1 : CONFIG.c.p2;
+                ctx.fillStyle = c; ctx.shadowBlur=10; ctx.shadowColor=c;
+                ctx.beginPath(); ctx.arc(u.x, u.y, 10 + (u.hp/50), 0, 7); ctx.fill();
+            });
+            ctx.shadowBlur=0;
+
+            if(document.getElementById('elixir-fill')) {
+                const me = Net.role==='host'?s.elixir.p1:s.elixir.p2;
+                document.getElementById('elixir-fill').style.height = (me*10)+'%';
+            }
+        }
+        else if(s.mode === 'dots') {
+            ctx.fillStyle='gold';
+            s.food.forEach(f => { ctx.fillRect(f.x-2, f.y-2, 4, 4); });
+            ctx.globalAlpha=0.8;
+            ctx.fillStyle=CONFIG.c.p1; ctx.beginPath(); ctx.arc(s.p1.x, s.p1.y, s.p1.r, 0, 7); ctx.fill();
+            ctx.fillStyle=CONFIG.c.p2; ctx.beginPath(); ctx.arc(s.p2.x, s.p2.y, s.p2.r, 0, 7); ctx.fill();
+            ctx.globalAlpha=1;
+        }
+    },
+    tank: (t, c) => {
+        const ctx = Game.ctx;
+        ctx.translate(t.x, t.y);
+        ctx.rotate(t.angle);
+        ctx.fillStyle = c;
+        ctx.shadowBlur=15; ctx.shadowColor=c;
+        ctx.fillRect(-20, -15, 30, 30); // body
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, -5, 40, 10); // gun
+        ctx.shadowBlur=0;
+        ctx.rotate(-t.angle);
+        ctx.translate(-t.x, -t.y);
+    }
+};
+
+// === INPUT SYSTEM (JOYSTICKS) ===
+const Joy = {
+    setup: (id, cb) => {
+        const zone = document.getElementById(id);
+        const stick = zone.querySelector('.joystick-stick');
+        let drag=false, start={x:0,y:0}, r=50;
+
+        const move = (cx, cy) => {
+            let dx = cx - start.x, dy = cy - start.y;
+            const dist = Math.min(Math.hypot(dx,dy), r);
+            const ang = Math.atan2(dy, dx);
+            const ox = Math.cos(ang)*dist, oy = Math.sin(ang)*dist;
+            stick.style.transform = `translate(${ox}px, ${oy}px)`;
+            cb(ox/r, oy/r);
+        };
+
+        zone.addEventListener('touchstart', e => {
+            drag=true; const b=zone.getBoundingClientRect(); 
+            start = {x: b.left+60, y: b.top+60};
+            move(e.touches[0].clientX, e.touches[0].clientY);
+            if(id === 'joy-act') Input.action = true;
+        });
+        zone.addEventListener('touchmove', e => {
+            if(drag) { e.preventDefault(); move(e.touches[0].clientX, e.touches[0].clientY); }
+        });
+        zone.addEventListener('touchend', () => {
+            drag=false; stick.style.transform = `translate(0,0)`; cb(0,0);
+            if(id === 'joy-act') Input.action = false;
+        });
+        
+        // PC Mouse support (для тестов)
+        zone.onmousedown = (e) => {
+             drag=true; const b=zone.getBoundingClientRect(); start = {x: b.left+60, y: b.top+60};
+             if(id === 'joy-act') Input.action = true;
+        };
+        window.onmousemove = (e) => { if(drag) move(e.clientX, e.clientY); };
+        window.onmouseup = () => { if(drag) {drag=false; stick.style.transform='translate(0,0)'; cb(0,0); Input.action=false;} };
+    }
+};
+
+Joy.setup('joy-move', (x,y) => { Input.x=x; Input.y=y; });
+Joy.setup('joy-act', (x,y) => { Input.ax=x; Input.ay=y; });
+
+// --- UTILS ---
+const UI = {
+    show: (id) => {
+        document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
+        const el = document.getElementById(id);
+        el.classList.remove('hidden');
+        if(id === 'scr-game') el.style.display = 'block';
+    }
+}
+</script>
 </body>
 </html>
-</script>
