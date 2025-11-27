@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <!-- Мета-тег для мобилок: убирает зум и скролл -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>P2P Мультиплеер</title>
+    <!-- Библиотека для соединения -->
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <style>
+        /* Стиль "Киберпанк/Тёмный" */
+        body {
+            margin: 0; overflow: hidden; background: #1a1a1a;
+            color: #fff; font-family: 'Segoe UI', Tahoma, sans-serif;
+            touch-action: none; /* Запрет зума пальцами */
+        }
+        
+        /* Слои (Экраны) */
+        .screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            background: rgba(0,0,0,0.95); z-index: 20; transition: opacity 0.3s;
+        }
+        .hidden { display: none !important; }
+
+        /* Элементы UI */
+        h1 { color: #00ffcc; text-transform: uppercase; letter-spacing: 2px; text-align: center; font-size: 1.5rem; }
+        button {
+            background: #ff0055; color: white; border: none; padding: 15px 30px;
+            font-size: 1.2rem; margin: 10px; border-radius: 10px; cursor: pointer;
+            box-shadow: 0 5px 15px rgba(255,0,85,0.4); width: 250px;
+        }
+        button:active { transform: scale(0.96); }
+        .btn-secondary { background: #444; box-shadow: none; }
+        
+        input {
+            padding: 12px; font-size: 1.1rem; border-radius: 5px;
+            border: 2px solid #555; background: #222; color: white; text-align: center;
+            width: 250px; margin-bottom: 15px;
+        }
+
+        /* Игровой интерфейс */
+        #gameHUD { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
+        #topBar {
+            position: absolute; top: 0; left: 0; width: 100%; padding: 10px;
+            display: flex; justify-content: space-between;
+            font-weight: bold; font-size: 1.2rem; background: rgba(0,0,0,0.5);
+        }
+        
+        canvas { display: block; background: #2a2a2a; }
+
+        /* Управление (Джойстики) */
+        #controls {
+            position: absolute; bottom: 20px; width: 100%; height: 140px;
+            display: flex; justify-content: space-between; pxadding: 0 40px; pointer-events: none;
+        }
+        .joy-area {
+            width: 120px; height: 120px; margin: 0 30px; pointer-events: auto;
+            background: rgba(255, 255, 255, 0.05); border: 2px solid rgba(255,255,255,0.1);
+            border-radius: 50%; position: relative;
+        }
+        .stick {
+            width: 50px; height: 50px; background: rgba(0, 255, 204, 0.5);
+            border-radius: 50%; position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%); box-shadow: 0 0 10px rgba(0,255,204,0.3);
+        }
+        .shoot-stick .stick { background: rgba(255, 0, 85, 0.6); }
+
+    </style>
+</head>
+<body>
+
+    <!-- ЭКРАН 1: ГЛАВНОЕ МЕНЮ -->
+    <div id="screen-menu" class="screen">
+        <h1>Сборник Игр</h1>
+        <button onclick="GameApp.startHost()">🎮 Создать Игру</button>
+        <button onclick="GameApp.toLobby()" class="btn-secondary">🔗 Подключиться</button>
+        <div style="margin-top:20px; font-size: 0.8rem; color: #777;">Нужен Интернет для соединения</div>
+    </div>
+
+    <!-- ЭКРАН 2: ЛОББИ ПОДКЛЮЧЕНИЯ -->
+    <div id="screen-lobby" class="screen hidden">
+        <h1>Подключение</h1>
+        <input type="text" id="joinIdInput" placeholder="Введите ID Хоста" autocomplete="off">
+        <button onclick="GameApp.joinGame()">Войти</button>
+        <button onclick="location.reload()" class="btn-secondary">Назад</button>
+        <p id="myIdDisplay" style="color: #ffff00; user-select: text;"></p>
+    </div>
+
+    <!-- ЭКРАН 3: ВЫБОР ИГРЫ (Только для Хоста) -->
+    <div id="screen-selector" class="screen hidden">
+        <h1>Выбери игру</h1>
+        <button onclick="GameApp.selectMode('shooter')">🔫 Танки/Шутер</button>
+        <button onclick="GameApp.selectMode('clash')" style="background: #4488ff;">🏰 Битва Замков</button>
+        <div id="waitingMsg"></div>
+    </div>
+
+    <!-- ЭКРАН 4: САМА ИГРА -->
+    <div id="gameUI" class="hidden">
+        <canvas id="ctx"></canvas>
+        <div id="gameHUD">
+            <div id="topBar">
+                <span style="color:#0f0">Игрок 1: <span id="s1">0</span></span>
+                <span style="color:#f05">Игрок 2: <span id="s2">0</span></span>
+            </div>
+            <div id="controls">
+                <!-- Левый стик (ходьба) -->
+                <div class="joy-area" id="joyL"><div class="stick"></div></div>
+                <!-- Правый стик (стрельба) -->
+                <div class="joy-area shoot-stick" id="joyR"><div class="stick"></div></div>
+            </div>
+        </div>
+    </div>
+
+<script>
+/**
+ * ГЛОБАЛЬНЫЙ ДВИЖОК
+ */
+const App = {
+    mode: null,      // 'shooter', 'clash'
+    role: null,      // 'host' или 'client'
+    conn: null,      // PeerJS connection
+    peer: null,
+    canvas: document.getElementById('ctx'),
+    ctx: document.getElementById('ctx').getContext('2d'),
+    width: 0, height: 0
+};
+
+// --- СЕТЕВОЙ ПРОТОКОЛ ---
+const GameApp = {
+    startHost: () => {
+        App.role = 'host';
+        document.querySelector('button').innerText = "Генерация ID...";
+        App.peer = new Peer(); // Создаем себя в сети PeerJS
+        
+        App.peer.on('open', id => {
+            // Переход в экран ожидания выбора
+            UI.show('screen-selector');
+            document.getElementById('waitingMsg').innerHTML = 
+                `Твой ID: <br><b style="font-size:2rem;color:#0f0">${id}</b><br>Сообщи его второму игроку!`;
+        });
+
+        App.peer.on('connection', c => {
+            App.conn = c;
+            GameApp.setupConnection();
+            alert("Игрок 2 подключился! Выберите игру.");
+        });
+    },
+
+    toLobby: () => UI.show('screen-lobby'),
+
+    joinGame: () => {
+        const id = document.getElementById('joinIdInput').value;
+        if (!id) return alert('Введите ID!');
+        App.role = 'client';
+        App.peer = new Peer();
+        App.peer.on('open', myId => {
+            App.conn = App.peer.connect(id);
+            GameApp.setupConnection();
+            document.querySelector('#screen-lobby h1').innerText = "Соединение...";
+        });
+        App.peer.on('error', err => alert('Ошибка подключения: ' + err));
+    },
+
+    setupConnection: () => {
+        // ОБРАБОТКА ДАННЫХ
+        App.conn.on('data', data => {
+            if (data.type === 'START_GAME') {
+                App.mode = data.mode;
+                startGame();
+            }
+            if (data.type === 'UPDATE' && App.role === 'client') {
+                // Клиент получает состояние мира и рисует
+                Render.world(data.state);
+            }
+            if (data.type === 'INPUT' && App.role === 'host') {
+                // Хост получает нажатия клиента
+                Logic.p2Input = data.input;
+            }
+        });
+
+        App.conn.on('open', () => {
+            if (App.role === 'client') {
+                 document.querySelector('#screen-lobby h1').innerText = "Ждем выбора игры...";
+            }
+        });
+    },
+
+    selectMode: (mode) => {
+        if (!App.conn) return alert("Ждем второго игрока!");
+        App.conn.send({ type: 'START_GAME', mode: mode }); // Команда клиенту
+        App.mode = mode;
+        startGame();
+    }
+};
+
+// --- ИГРОВОЙ ЦИКЛ ---
+
+// Общее состояние
+let State = {
+    p1: { x: 100, y: 300, color: '#00ffcc', score: 0, hp: 100 },
+    p2: { x: 800, y: 300, color: '#ff0055', score: 0, hp: 100 },
+    bullets: [],
+    mobs: [] // Для режима Clash
+};
+
+let Input = { x:0, y:0, sx:0, sy:0, fire:false }; // Мой ввод
+const Logic = {
+    p2Input: { x:0, y:0, sx:0, sy:0, fire:false }, // Ввод соперника
+    
+    // ГЛАВНЫЙ ЦИКЛ ФИЗИКИ (только Хост)
+    tick: () => {
+        const S = 5; // Скорость
+
+        // 1. Движение Игрока 1 (Локальное)
+        State.p1.x += Input.x * S;
+        State.p1.y += Input.y * S;
+        
+        // 2. Движение Игрока 2 (Сетевое)
+        State.p2.x += Logic.p2Input.x * S;
+        State.p2.y += Logic.p2Input.y * S;
+
+        // Границы карты
+        [State.p1, State.p2].forEach(p => {
+            if(p.x < 0) p.x = 0; if(p.x > App.width) p.x = App.width;
+            if(p.y < 0) p.y = 0; if(p.y > App.height) p.y = App.height;
+        });
+
+        // ЛОГИКА ЗАВИСИТ ОТ РЕЖИМА
+        if(App.mode === 'shooter') Logic.modeShooter();
+        else if(App.mode === 'clash') Logic.modeClash();
+    },
+
+    modeShooter: () => {
+        // Обработка стрельбы P1
+        if (Input.fire && Frame % 15 === 0) 
+            State.bullets.push({x: State.p1.x, y: State.p1.y, vx: Input.sx*15, vy: Input.sy*15, owner:1});
+        
+        // Обработка стрельбы P2
+        if (Logic.p2Input.fire && Frame % 15 === 0) 
+            State.bullets.push({x: State.p2.x, y: State.p2.y, vx: Logic.p2Input.sx*15, vy: Logic.p2Input.sy*15, owner:2});
+
+        // Движение пуль
+        for(let i=State.bullets.length-1; i>=0; i--){
+            let b = State.bullets[i];
+            b.x += b.vx; b.y += b.vy;
+            
+            // Уборка пуль за экраном
+            if(b.x < 0 || b.x > App.width || b.y < 0 || b.y > App.height) {
+                State.bullets.splice(i,1); continue;
+            }
+
+            // Попадание (Hitbox 30px)
+            let target = b.owner === 1 ? State.p2 : State.p1;
+            let dist = Math.hypot(b.x - target.x, b.y - target.y);
+            if(dist < 30) {
+                if(b.owner===1) State.p1.score++; else State.p2.score++;
+                State.bullets.splice(i,1);
+                // "Респаун" - просто толкаем в случайное место
+                target.x = Math.random() * App.width;
+                target.y = Math.random() * App.height;
+            }
+        }
+    },
+    
+    modeClash: () => {
+        // Простая версия: кто первый закрасит центр экрана
+        // P1 и P2 просто бегают и собирают монеты, которые я создам
+        if(Frame % 60 === 0) {
+            State.mobs.push({ x: Math.random() * App.width, y: Math.random() * App.height, active: true });
+        }
+        // Сбор монет
+        State.mobs.forEach(m => {
+            if(!m.active) return;
+            if(Math.hypot(State.p1.x - m.x, State.p1.y - m.y) < 40) { m.active=false; State.p1.score++; }
+            if(Math.hypot(State.p2.x - m.x, State.p2.y - m.y) < 40) { m.active=false; State.p2.score++; }
+        });
+    }
+};
+
+let Frame = 0;
+function gameLoop() {
+    Frame++;
+    if(App.role === 'host') {
+        Logic.tick();
+        // Отправка состояния клиенту
+        App.conn.send({ type: 'UPDATE', state: State });
+        Render.world(State);
+    } else {
+        // Клиент шлет только input
+        App.conn.send({ type: 'INPUT', input: Input });
+        // (Отрисовка клиента происходит в событии on 'data')
+    }
+    requestAnimationFrame(gameLoop);
+}
+
+function startGame() {
+    UI.show('gameUI');
+    
+    // Ресайз под полный экран
+    App.width = window.innerWidth;
+    App.height = window.innerHeight;
+    App.canvas.width = App.width;
+    App.canvas.height = App.height;
+
+    // Начальные позиции
+    State.p1.x = 100; State.p1.y = App.height/2;
+    State.p2.x = App.width-100; State.p2.y = App.height/2;
+
+    gameLoop();
+}
+
+// --- РИСОВАНИЕ ---
+const Render = {
+    world: (state) => {
+        const ctx = App.ctx;
+        ctx.fillStyle = '#1a1a1a'; // Очистка фона
+        ctx.fillRect(0, 0, App.width, App.height);
+
+        // Рисуем сетку
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        for(let i=0; i<App.width; i+=100) { ctx.moveTo(i,0); ctx.lineTo(i, App.height); }
+        for(let i=0; i<App.height; i+=100) { ctx.moveTo(0,i); ctx.lineTo(App.width, i); }
+        ctx.stroke();
+
+        // Рисуем монетки (для Clash режима)
+        if(App.mode === 'clash') {
+            ctx.fillStyle = 'gold';
+            state.mobs.forEach(m => {
+                if(m.active) {
+                    ctx.beginPath(); ctx.arc(m.x, m.y, 10, 0, Math.PI*2); ctx.fill();
+                }
+            });
+        }
+
+        // Игроки
+        Render.player(state.p1, "P1");
+        Render.player(state.p2, "P2");
+
+        // Пули
+        ctx.fillStyle = '#ffaa00';
+        state.bullets.forEach(b => {
+            ctx.beginPath(); ctx.arc(b.x, b.y, 6, 0, Math.PI*2); ctx.fill();
+        });
+
+        // UI Счета
+        document.getElementById('s1').innerText = state.p1.score;
+        document.getElementById('s2').innerText = state.p2.score;
+    },
+    player: (p, label) => {
+        const ctx = App.ctx;
+        ctx.fillStyle = p.color;
+        // Танчик/Персонаж (Круг + Пушка)
+        ctx.beginPath(); ctx.arc(p.x, p.y, 25, 0, Math.PI*2); ctx.fill();
+        
+        ctx.fillStyle = '#fff';
+        ctx.font = '20px Arial';
+        ctx.fillText(label, p.x - 10, p.y - 40);
+    }
+};
+
+// --- УПРАВЛЕНИЕ (TOUCH + KEYBOARD) ---
+const UI = {
+    show: (id) => {
+        document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
+        document.getElementById(id).classList.remove('hidden');
+        if(id === 'gameUI') document.getElementById('gameUI').classList.remove('hidden');
+    }
+};
+
+// Джойстики
+setupJoystick('joyL', (d) => { Input.x = d.x; Input.y = d.y; });
+setupJoystick('joyR', (d) => { Input.sx = d.x; Input.sy = d.y; Input.fire = (d.x||d.y); });
+
+function setupJoystick(elemId, callback) {
+    const zone = document.getElementById(elemId);
+    const stick = zone.querySelector('.stick');
+    let drag = false;
+    let touchId = null;
+    let rect = zone.getBoundingClientRect();
+
+    function move(cx, cy) {
+        const center = 60; // radius of area
+        let dx = cx - (rect.left + center);
+        let dy = cy - (rect.top + center);
+        let dist = Math.min(Math.hypot(dx,dy), 50);
+        let angle = Math.atan2(dy, dx);
+        
+        let tx = Math.cos(angle) * dist;
+        let ty = Math.sin(angle) * dist;
+        stick.style.transform = `translate(-50%, -50%) translate(${tx}px, ${ty}px)`;
+        callback({x: tx/50, y: ty/50});
+    }
+
+    zone.addEventListener('touchstart', e => {
+        e.preventDefault(); drag = true; 
+        rect = zone.getBoundingClientRect(); // re-calc coords
+        touchId = e.changedTouches[0].identifier;
+        move(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+    });
+    
+    zone.addEventListener('touchmove', e => {
+        if(!drag) return;
+        e.preventDefault();
+        for(let t of e.changedTouches) {
+            if(t.identifier === touchId) move(t.clientX, t.clientY);
+        }
+    });
+
+    const reset = () => { 
+        drag=false; 
+        stick.style.transform = `translate(-50%, -50%)`; 
+        callback({x:0, y:0}); 
+    };
+    zone.addEventListener('touchend', reset);
+}
+
+// Клавиатура (для тестов на ПК)
+window.addEventListener('keydown', e => {
+    if(e.key==='w') Input.y = -1;
+    if(e.key==='s') Input.y = 1;
+    if(e.key==='a') Input.x = -1;
+    if(e.key==='d') Input.x = 1;
+    if(e.key==='ArrowUp') { Input.sy=-1; Input.fire=true; }
+    if(e.key==='ArrowDown') { Input.sy=1; Input.fire=true; }
+    if(e.key==='ArrowLeft') { Input.sx=-1; Input.fire=true; }
+    if(e.key==='ArrowRight') { Input.sx=1; Input.fire=true; }
+});
+window.addEventListener('keyup', e => {
+    if('ws'.includes(e.key)) Input.y = 0;
+    if('ad'.includes(e.key)) Input.x = 0;
+    if(['ArrowUp','ArrowDown'].includes(e.key)) Input.sy = 0;
+    if(['ArrowLeft','ArrowRight'].includes(e.key)) Input.sx = 0;
+    if(Input.sx===0 && Input.sy===0) Input.fire = false;
+});
+</script>
+</body>
+</html>
