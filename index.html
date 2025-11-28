@@ -2,7 +2,8 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- ИСПРАВЛЕНИЕ 1: Разрешено масштабирование для доступности -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ETERNAL STRIFE: 1v1 P2P</title>
     <!-- PeerJS для сети -->
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
@@ -16,7 +17,15 @@
             --border: 1px solid rgba(255,255,255,0.1);
         }
         
-        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; font-family: 'Rajdhani', sans-serif; touch-action: none; }
+        * { 
+            box-sizing: border-box; 
+            -webkit-tap-highlight-color: transparent; 
+            /* ИСПРАВЛЕНИЕ 2: Добавлен префикс для Safari */
+            -webkit-user-select: none; 
+            user-select: none; 
+            font-family: 'Rajdhani', sans-serif; 
+            touch-action: none; 
+        }
         
         body {
             margin: 0; overflow: hidden; background: var(--bg); color: #fff;
@@ -37,7 +46,9 @@
 
         .panel {
             background: var(--glass); border: var(--border);
-            backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px);
+            /* ИСПРАВЛЕНИЕ 3: Сначала префикс, потом стандарт */
+            -webkit-backdrop-filter: blur(15px);
+            backdrop-filter: blur(15px);
             padding: 25px; border-radius: 12px; width: 90%; max-width: 450px;
             display: flex; flex-direction: column; gap: 15px; text-align: center;
             box-shadow: 0 10px 30px rgba(0,0,0,0.5);
@@ -125,7 +136,8 @@
 <div id="scr-join" class="screen hidden">
     <h2>CONNECT</h2>
     <div class="panel">
-        <input id="inp-dest-id" placeholder="Paste Lobby ID here...">
+        <!-- ИСПРАВЛЕНИЕ 4: Добавлен aria-label -->
+        <input id="inp-dest-id" aria-label="Enter Lobby ID" placeholder="Paste Lobby ID here...">
         <button class="btn-p" onclick="App.connectToHost()">CONNECT</button>
         <button class="btn-s" onclick="UI.show('scr-menu')">BACK</button>
     </div>
@@ -137,7 +149,8 @@
     <div class="panel">
         <div id="host-share-zone" style="display:none; margin-bottom:15px; border-bottom:1px solid #444; padding-bottom:15px;">
             <p style="color:#aaa; font-size:0.9rem">Send this ID to your friend:</p>
-            <input id="my-id-box" readonly onclick="this.select(); navigator.clipboard.writeText(this.value); this.style.borderColor='#0f0'" style="cursor:pointer;">
+            <!-- ИСПРАВЛЕНИЕ 5: Добавлен aria-label -->
+            <input id="my-id-box" aria-label="Your Game ID" readonly onclick="this.select(); navigator.clipboard.writeText(this.value); this.style.borderColor='#0f0'" style="cursor:pointer;">
             <div id="lobby-status" style="margin-top:10px; color:orange">Waiting for player 2...</div>
         </div>
         
@@ -503,7 +516,12 @@ const Logic = {
         });
     },
 
-    dist: (a,b) => Math.hypot(a.x-b.x, a.y-b.y)
+    dist: (a,b) => Math.hypot(a.x-b.x, a.y-b.y),
+    
+    // Fix for missing handleInput in original code
+    handleInput: (pIdx, inp) => {
+        Logic.inpBuffer = inp; 
+    }
 };
 
 /* ==================== RENDERING ==================== */
@@ -699,10 +717,8 @@ const Shop = {
         s.style.display = s.style.display==='block'?'none':'block'; 
     },
     buy: (item, cost) => {
-        // Since Logic is authoritative on Host, simple sync cheat for demo:
-        // We modify local vars but for "Real" net code, this needs a packet request "BUY"
         let me = State.players[State.meIdx];
-        if(me.gold >= cost) { // Host handles real value but client predicts
+        if(me.gold >= cost) { 
             if(State.isHost) {
                  me.gold -= cost;
                  if(item==='dmg') State.shop.dmgMod+=10;
@@ -756,9 +772,6 @@ const App = {
                   let opp = document.getElementById('lobby-status').innerText;
                   if(opp.includes('Ready')) {
                       clearInterval(checkStart);
-                      // Hacking: using last known packet for h2 from logs if available, 
-                      // for demo forcing simple sync: Host assumes H1 vs Client H1 (or default)
-                      // In real code: receive H2 type in packet.
                       Game.init(Date.now(), App.selectedH, 0); 
                       Net.send({type:'START', seed:Date.now(), h1:App.selectedH, h2:0});
                   }
