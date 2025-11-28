@@ -807,6 +807,32 @@ const UI = {
         document.getElementById('over-title').innerHTML = `<span style='color:${col}'>${txt}</span>`;
     }
 };
+    /* ==================== ДОБАВИТЬ ЭТО В КОНЕЦ СКРИПТА ==================== */
+// Управление с клавиатуры для ПК
+window.addEventListener('keydown', e => {
+    switch(e.code) {
+        case 'KeyW': Input.curr.jy = -1; break;
+        case 'KeyS': Input.curr.jy = 1; break;
+        case 'KeyA': Input.curr.jx = -1; break;
+        case 'KeyD': Input.curr.jx = 1; break;
+        case 'Space': Input.curr.atk = true; break;
+        case 'KeyQ': Input.curr.s1 = true; break;
+        case 'KeyE': Input.curr.s2 = true; break; // Используем E для второго скилла
+    }
+});
+
+window.addEventListener('keyup', e => {
+    switch(e.code) {
+        case 'KeyW': if(Input.curr.jy < 0) Input.curr.jy = 0; break;
+        case 'KeyS': if(Input.curr.jy > 0) Input.curr.jy = 0; break;
+        case 'KeyA': if(Input.curr.jx < 0) Input.curr.jx = 0; break;
+        case 'KeyD': if(Input.curr.jx > 0) Input.curr.jx = 0; break;
+        case 'Space': Input.curr.atk = false; break;
+        case 'KeyQ': Input.curr.s1 = false; break;
+        case 'KeyE': Input.curr.s2 = false; break;
+    }
+});
 </script>
 </body>
 </html>
+
