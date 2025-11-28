@@ -3,637 +3,730 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ULTIMATE GAME PACK</title>
+    <title>POCKET DOTA 2 P2P</title>
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;900&family=Roboto:wght@300&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Roboto:wght@400;700&display=swap" rel="stylesheet">
     <style>
-        :root { --p1: #00ffff; --p2: #ff0055; --bg: #050510; --ui-bg: rgba(0,0,0,0.85); }
+        :root { --rad: #4CAF50; --dire: #F44336; --gold: #FFD700; --mana: #00B0FF; --bg: #0d1117; }
         * { box-sizing: border-box; touch-action: none; user-select: none; outline: none; -webkit-tap-highlight-color: transparent; }
         
         body { 
-            margin: 0; padding: 0; overflow: hidden; background: var(--bg); 
-            font-family: 'Orbitron', sans-serif; color: white;
+            margin: 0; overflow: hidden; background: #000; font-family: 'Roboto', sans-serif; 
+            color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh;
         }
 
-        /* --- UI Screens --- */
+        /* UI SCREENS */
         .screen {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            background: radial-gradient(circle at center, #1a1a2e 0%, #000 100%);
-            z-index: 100; transition: opacity 0.5s;
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: radial-gradient(#1e2228, #000);
+            z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: 0.3s;
         }
         .hidden { opacity: 0; pointer-events: none; z-index: -1; display: none !important; }
 
-        h1 { font-size: 2.5rem; text-shadow: 0 0 20px var(--p1); text-transform: uppercase; margin: 0 0 30px 0; text-align: center;}
-        h2 { color: #aaa; font-family: 'Roboto'; font-size: 1rem; margin-bottom: 20px; }
+        h1 { font-family: 'Cinzel', serif; font-size: 3rem; color: #ccc; text-shadow: 0 0 10px #aa0000; margin-bottom: 0.5rem; letter-spacing: 5px; }
         
-        .panel { 
-            background: rgba(255,255,255,0.05); padding: 20px; border-radius: 15px; 
-            border: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; align-items: center; gap: 10px;
-            backdrop-filter: blur(10px); width: 90%; max-width: 400px;
+        .box {
+            background: rgba(20,20,30, 0.9); padding: 30px; border: 1px solid #444; 
+            box-shadow: 0 0 20px rgba(0,0,0,0.8); border-radius: 4px; max-width: 500px; width: 90%; text-align: center;
         }
 
         button {
-            width: 100%; padding: 18px; font-size: 1.1rem; border: none; border-radius: 8px;
-            background: linear-gradient(90deg, #222, #333); color: white; font-family: 'Orbitron'; cursor: pointer;
-            box-shadow: 0 4px 0 #000; transition: transform 0.1s; text-transform: uppercase;
+            background: linear-gradient(180deg, #3a4b5d, #252e38); color: #fff; border: 1px solid #666;
+            padding: 15px 30px; margin: 10px; font-size: 1.1rem; font-family: 'Cinzel', serif; cursor: pointer; width: 100%;
+            transition: 0.2s; box-shadow: inset 0 1px 0 rgba(255,255,255,0.1);
         }
-        button:active { transform: translateY(4px); box-shadow: none; }
-        button.primary { background: linear-gradient(45deg, var(--p1), #0088ff); color: #000; font-weight: 900; }
-        button.secondary { background: #333; border: 1px solid #555; }
+        button:hover { filter: brightness(1.2); border-color: #888; }
+        button:active { transform: translateY(2px); }
+        input { width: 100%; padding: 15px; background: #111; border: 1px solid #444; color: #fff; margin-bottom: 10px; font-family: monospace; font-size: 1.2rem; text-align: center; }
+
+        /* GAME HUD */
+        #game-view { position: relative; width: 100%; height: 100%; overflow: hidden; cursor: crosshair; }
+        canvas { display: block; width: 100%; height: 100%; background: #0b0f0a; }
+
+        .top-bar {
+            position: absolute; top: 0; width: 100%; height: 50px; background: linear-gradient(180deg, rgba(0,0,0,0.9), transparent);
+            display: flex; justify-content: space-between; align-items: center; padding: 0 20px; font-family: 'Cinzel';
+        }
+        .hero-portrait { width: 60px; height: 60px; border: 2px solid #555; background: #222; margin-top: 10px; display: flex; align-items: center; justify-content: center; font-size: 2rem; position: relative; }
+        .score-board { font-size: 1.5rem; font-weight: bold; letter-spacing: 2px; }
+        .clock { color: #fff; font-weight: bold; }
         
-        input { 
-            width: 100%; padding: 15px; font-size: 1.2rem; background: #000; border: 1px solid #444; color: var(--p1);
-            text-align: center; border-radius: 8px; font-family: monospace; letter-spacing: 2px;
-        }
+        .team-rad { border-color: var(--rad); box-shadow: 0 0 10px var(--rad); }
+        .team-dire { border-color: var(--dire); box-shadow: 0 0 10px var(--dire); }
 
-        /* --- DEBUG CONSOLE (ОЧЕНЬ ВАЖНО) --- */
-        #debug-console {
-            position: absolute; top: 0; left: 0; width: 100%; padding: 5px;
-            font-family: monospace; font-size: 0.7rem; color: #ffff00;
-            background: rgba(0,0,0,0.5); pointer-events: none; z-index: 1000; white-space: pre-wrap;
-        }
-
-        /* --- GAME UI --- */
-        #game-layer { position: relative; width: 100%; height: 100%; overflow: hidden; }
-        canvas { display: block; width: 100%; height: 100%; }
-
-        .hud-top {
-            position: absolute; top: 10px; width: 100%; padding: 0 20px;
-            display: flex; justify-content: space-between; font-size: 1.5rem; font-weight: bold;
-            text-shadow: 2px 2px 0 #000; pointer-events: none;
-        }
-
-        /* Controls */
-        #controls-stick { position: absolute; bottom: 20px; left: 20px; pointer-events: auto; }
-        #controls-action { position: absolute; bottom: 20px; right: 20px; pointer-events: auto; }
+        /* SKILLS PANEL */
+        .controls-layer { pointer-events: none; position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: flex-end; padding-bottom: 20px;}
         
-        .joystick-base {
-            width: 120px; height: 120px; border-radius: 50%; 
-            background: rgba(255, 255, 255, 0.05); border: 2px dashed rgba(255,255,255,0.2);
-            position: relative; display: flex; align-items: center; justify-content: center;
-        }
-        .joystick-stick {
-            width: 50px; height: 50px; border-radius: 50%; background: rgba(0, 255, 255, 0.5);
-            box-shadow: 0 0 15px var(--p1); transform: translate(0,0); position: absolute;
-        }
-        
-        /* Clash Cards */
-        #card-dock {
-            position: absolute; bottom: 10px; width: 100%; display: flex; justify-content: center; gap: 10px;
-            pointer-events: auto;
-        }
-        .card {
-            width: 60px; height: 80px; background: #222; border: 2px solid #555; border-radius: 6px;
-            display: flex; flex-direction: column; align-items: center; justify-content: space-around;
-            font-size: 0.7rem; position: relative; cursor: pointer; transition: 0.2s;
-        }
-        .card.active { border-color: #0f0; box-shadow: 0 0 10px #0f0; background: #002200; transform: translateY(-5px); }
-        .cost-bubble { position: absolute; top: -5px; right: -5px; width: 20px; height: 20px; background: #a0f; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; }
+        /* Mobile Joystick */
+        #joystick-zone { position: absolute; bottom: 30px; left: 30px; width: 150px; height: 150px; pointer-events: auto; }
+        .joy-base { width: 100%; height: 100%; background: rgba(255,255,255,0.05); border: 2px dashed rgba(255,255,255,0.1); border-radius: 50%; display: flex; justify-content: center; align-items: center; }
+        .joy-stick { width: 40%; height: 40%; background: rgba(255,255,255,0.2); border-radius: 50%; box-shadow: 0 0 15px #000; }
 
+        /* Skill Bar */
+        .skill-dock {
+            pointer-events: auto; display: flex; gap: 15px; margin: 0 auto; background: rgba(0,0,0,0.6); 
+            padding: 10px 20px; border-radius: 10px; backdrop-filter: blur(5px); border: 1px solid #333;
+        }
+        .skill-btn {
+            width: 70px; height: 70px; background: #222; border: 2px solid #555; position: relative;
+            display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; transition: 0.1s;
+        }
+        .skill-btn:active { transform: scale(0.95); border-color: #fff; }
+        .skill-btn.active-skill { border-color: var(--gold); box-shadow: 0 0 10px var(--gold); }
+        .skill-key { position: absolute; top: 2px; left: 4px; font-size: 0.7rem; color: #888; font-weight: bold; }
+        .skill-icon { font-size: 1.8rem; }
+        .cd-overlay { 
+            position: absolute; inset: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; 
+            font-size: 1.2rem; font-weight: bold; color: #fff; opacity: 0; transition: 0s;
+        }
+        .mana-cost { position: absolute; bottom: 2px; right: 4px; font-size: 0.8rem; color: var(--mana); text-shadow: 1px 1px 0 #000; }
+        
+        .big-btn { width: 90px; height: 90px; border-color: var(--dire); } /* Ult */
+
+        /* Player Stats Overlay */
+        .stats-bar {
+            width: 100%; text-align: center; position: absolute; bottom: 100px;
+            text-shadow: 1px 1px 2px #000; font-size: 0.9rem;
+            display: flex; justify-content: center; gap: 15px;
+        }
+        .stat-item { display: flex; align-items: center; gap: 5px; background: rgba(0,0,0,0.5); padding: 4px 10px; border-radius: 20px; }
+
+        /* Effects */
+        #logger { position: absolute; top: 60px; left: 10px; color: #ffff00; font-family: monospace; font-size: 0.8rem; width: 300px; height: 100px; overflow: hidden; pointer-events: none; opacity: 0.7; }
+        
+        @media (min-width: 800px) {
+            #joystick-zone { display: none; }
+            .skill-dock { position: absolute; bottom: 20px; right: 50%; transform: translateX(50%); }
+        }
     </style>
 </head>
-<body>
+<body oncontextmenu="return false;">
 
-<!-- SYSTEM LOGS -->
-<div id="debug-console">Build: v3.0 Ultimate | Status: Init...</div>
-
-<!-- SCREEN 1: MENU -->
+<!-- 1. ГЛАВНОЕ МЕНЮ -->
 <div id="scr-menu" class="screen">
-    <h1>GamePack v3.0</h1>
-    <div class="panel">
-        <button class="primary" onclick="Net.host()">👑 Создать Сервер</button>
-        <div style="width:100%; height:1px; background:#444; margin:10px 0;"></div>
-        <button class="secondary" onclick="UI.show('scr-lobby')">🤝 Подключиться</button>
-        <p style="font-size:0.8rem; color:#666">Работает через интернет (P2P)</p>
+    <div style="width: 100px; height: 100px; border: 5px solid #a23; background: #111; margin-bottom: 20px; transform: rotate(45deg); display:flex; align-items:center; justify-content:center;">
+        <div style="width: 70%; height: 70%; border: 3px solid #ccc; background: #300; transform: rotate(-45deg);"></div>
+    </div>
+    <h1>DOTA LITE</h1>
+    <div class="box">
+        <button onclick="Network.host()" style="border-color: #4CAF50">СОЗДАТЬ ИГРУ (RADIANT)</button>
+        <div style="margin: 10px 0; color: #666">- или -</div>
+        <button onclick="UI.toJoin()">ПОДКЛЮЧИТЬСЯ (DIRE)</button>
     </div>
 </div>
 
-<!-- SCREEN 2: LOBBY -->
+<!-- 2. ПОДКЛЮЧЕНИЕ -->
+<div id="scr-join" class="screen hidden">
+    <h2>ПОИСК ИГРЫ</h2>
+    <div class="box">
+        <p>Введите ID лобби от Хоста:</p>
+        <input type="text" id="host-id-input" placeholder="ID Хоста...">
+        <button onclick="Network.join()">ВОЙТИ В БИТВУ</button>
+        <button onclick="location.reload()" style="background: transparent; border: none; color: #888;">Назад</button>
+    </div>
+</div>
+
+<!-- 3. ЛОББИ / ОЖИДАНИЕ -->
 <div id="scr-lobby" class="screen hidden">
-    <h2>ВВОД ID СЕРВЕРА</h2>
-    <div class="panel">
-        <input type="text" id="join-inp" placeholder="Вставьте ID сюда...">
-        <button class="primary" onclick="Net.join()">Подключиться</button>
-        <button class="secondary" onclick="UI.show('scr-menu')">Назад</button>
+    <h2>ОЖИДАНИЕ...</h2>
+    <div class="box">
+        <p>Твой ID лобби (скинь другу):</p>
+        <input type="text" id="my-id-display" readonly style="color: var(--gold); border-color: var(--gold); cursor: pointer;" onclick="this.select(); document.execCommand('copy');">
+        <div id="status-msg" style="color: #4CAF50; margin-top: 15px;">Ждем противника...</div>
     </div>
 </div>
 
-<!-- SCREEN 3: HOST ROOM -->
-<div id="scr-room" class="screen hidden">
-    <h2>Комната Ожидания</h2>
-    <div class="panel">
-        <div id="my-id-display" style="color:var(--p1); font-size:1.5rem; word-break: break-all; text-align:center;">...</div>
-        <div style="font-size:0.8rem; color:#aaa">Скопируй этот код и скинь другу</div>
-        <div id="player-status" style="margin-top:20px; font-weight:bold; color:orange">Ожидание игрока 2...</div>
-        <hr style="width:100%; border-color:#333">
-        <div id="game-selector" class="hidden" style="width:100%">
-            <p>Выберите игру:</p>
-            <button class="primary" onclick="Game.start('tanks')" style="margin-bottom:10px">🚜 NEON TANKS</button>
-            <button class="primary" onclick="Game.start('clash')" style="background: linear-gradient(45deg, #aa00ff, #ff00aa)">⚔️ CYBER CLASH</button>
-            <button class="primary" onclick="Game.start('dots')" style="margin-top:10px; background:#444">🔴 DOT HUNTER</button>
-        </div>
-    </div>
-</div>
-
-<!-- SCREEN 4: GAME -->
-<div id="scr-game" class="hidden">
-    <div id="game-layer">
-        <canvas id="ctx"></canvas>
-        <div class="hud-top">
-            <span style="color:var(--p1)">P1: <span id="s1">0</span></span>
-            <div id="game-timer" style="color:white; font-size:1rem; opacity:0.5">00:00</div>
-            <span style="color:var(--p2)">P2: <span id="s2">0</span></span>
-        </div>
-
-        <!-- Sticks UI -->
-        <div id="controls-stick">
-            <div class="joystick-base" id="joy-move"><div class="joystick-stick"></div></div>
-        </div>
-        <div id="controls-action">
-            <div class="joystick-base" id="joy-act" style="border-color:rgba(255,0,85,0.3)"><div class="joystick-stick" style="background:rgba(255,0,85,0.5)"></div></div>
+<!-- 4. ИГРОВОЙ ПРОЦЕСС -->
+<div id="scr-game" class="screen hidden" style="background: transparent; justify-content: flex-start;">
+    <div id="game-view">
+        <canvas id="cvs"></canvas>
+        <div class="top-bar">
+            <div class="hero-portrait team-rad" id="hud-p1">🛡️</div>
+            <div class="score-board">
+                <span style="color:var(--rad)" id="score-rad">0</span> 
+                <span class="clock" id="game-timer">00:00</span>
+                <span style="color:var(--dire)" id="score-dire">0</span>
+            </div>
+            <div class="hero-portrait team-dire" id="hud-p2">🔥</div>
         </div>
         
-        <!-- Clash UI -->
-        <div id="clash-ui" class="hidden">
-            <div style="position:absolute; bottom:120px; left:10px; width:20px; height:150px; background:#222; border:1px solid #555">
-                <div id="elixir-fill" style="width:100%; height:0%; background:#a0f; position:absolute; bottom:0; transition:0.2s"></div>
+        <div id="logger">System Init...</div>
+
+        <!-- Управление -->
+        <div class="controls-layer">
+            <div class="stats-bar">
+                <div class="stat-item"><span style="color:gold">G:</span> <span id="hud-gold">0</span></div>
+                <div class="stat-item"><span style="color:lime">HP:</span> <span id="hud-hp">100%</span></div>
+                <div class="stat-item"><span style="color:cyan">LVL:</span> <span id="hud-lvl">1</span></div>
+                <div class="stat-item">⚔️ <span id="hud-dmg">50</span></div>
             </div>
-            <div id="card-dock"></div>
+
+            <!-- Skills -->
+            <div class="skill-dock">
+                <!-- Skill 1 -->
+                <div class="skill-btn" id="btn-q" onmousedown="Inp.useSkill(0)" ontouchstart="Inp.useSkill(0)">
+                    <div class="skill-key">Q</div>
+                    <div class="skill-icon" id="icon-q">⚡</div>
+                    <div class="cd-overlay" id="cd-q">0</div>
+                    <div class="mana-cost" id="mc-q">50</div>
+                </div>
+                <!-- Skill 2 -->
+                <div class="skill-btn" id="btn-w" onmousedown="Inp.useSkill(1)" ontouchstart="Inp.useSkill(1)">
+                    <div class="skill-key">W</div>
+                    <div class="skill-icon" id="icon-w">🛡️</div>
+                    <div class="cd-overlay" id="cd-w">0</div>
+                    <div class="mana-cost" id="mc-w">80</div>
+                </div>
+                <!-- Ultimate -->
+                <div class="skill-btn big-btn" id="btn-r" onmousedown="Inp.useSkill(2)" ontouchstart="Inp.useSkill(2)">
+                    <div class="skill-key">R</div>
+                    <div class="skill-icon" id="icon-r">☄️</div>
+                    <div class="cd-overlay" id="cd-r">0</div>
+                    <div class="mana-cost" id="mc-r">150</div>
+                </div>
+                 <!-- Attack/Hit for Mobile -->
+                 <div class="skill-btn big-btn" style="border-color:#fff; background:#422;" id="btn-a" onmousedown="Inp.attack()" ontouchstart="Inp.attack()">
+                    <div class="skill-key">SPC</div>
+                    <div class="skill-icon">⚔️</div>
+                </div>
+            </div>
+            
+            <div id="joystick-zone">
+                <div class="joy-base"><div class="joy-stick"></div></div>
+            </div>
         </div>
+    </div>
+    
+    <!-- Game Over Screen Overlay -->
+    <div id="end-screen" style="position:absolute; inset:0; background:rgba(0,0,0,0.8); display:none; flex-direction:column; align-items:center; justify-content:center;">
+        <h1 id="end-title" style="color:gold">VICTORY</h1>
+        <button onclick="location.reload()" style="max-width:200px">В МЕНЮ</button>
     </div>
 </div>
 
 <script>
-// === GLOBAL LOG SYSTEM (Для отладки на телефоне) ===
-function log(msg) {
-    const d = document.getElementById('debug-console');
-    const t = new Date().toLocaleTimeString();
-    d.innerHTML = `[${t}] ${msg}\n` + d.innerHTML;
-    if(d.innerHTML.length > 500) d.innerHTML = d.innerHTML.substring(0, 500);
-}
-window.onerror = function(msg, url, line) { log("ERR: " + msg + " at " + line); };
+// ================= CORE UTILS =================
+const $ = (id) => document.getElementById(id);
+const log = (txt) => { const l=$('logger'); l.innerText=txt+"\n"+l.innerText; };
+const dist = (a,b) => Math.hypot(a.x-b.x, a.y-b.y);
 
-// === NETWORK MODULE (PEERJS WRAPPER) ===
-const Net = {
-    peer: null, conn: null, role: null, id: null,
+// Конфигурация героев
+const HEROES = {
+    knight: { name: "Omni", hp: 600, maxHp:600, mp:300, maxMp:300, spd: 4, dmg: 45, range: 60, color:'#4CAF50', skills:['🔨','🛡️','😇'] },
+    mage:   { name: "Lina", hp: 450, maxHp:450, mp:400, maxMp:400, spd: 3.8, dmg: 40, range: 180, color:'#F44336', skills:['🔥','🌊','⚡'] }
+};
+
+const SKILLS_DB = [
+    // Knight
+    { cost: 60, cd: 6, dmg: 100, range: 150, type:'target', name:'Heal/Nuke' },
+    { cost: 80, cd: 12, dmg: 0,   range: 0,   type:'buff',   name:'Repel', duration: 180 },
+    { cost: 150,cd: 40, dmg: 0,   range: 400, type:'global', name:'Guardian', duration: 300 },
+    // Mage
+    { cost: 70, cd: 5,  dmg: 120, range: 300, type:'linear', name:'Slave' },
+    { cost: 90, cd: 10, dmg: 80,  range: 250, type:'area',   name:'Stun' },
+    { cost: 200,cd: 50, dmg: 400, range: 400, type:'target', name:'Laguna' }
+];
+
+// Глобальные переменные игры
+const GAME = {
+    running: false, width: 0, height: 0,
+    role: 'spec', // 'host' или 'client'
+    playerId: 0, // 0 = host (radiant), 1 = client (dire)
+    lastTick: 0, dt: 0, timer: 0,
+    camera: { x:0, y:0 }, // для прокрутки, если нужно (здесь фиксировано на игроке)
     
+    // Сущности
+    ents: [], 
+    fx: [], // частицы
+    projectiles: []
+};
+
+// ================= NETWORK (PEERJS) =================
+const Network = {
+    peer: null, conn: null,
     host: () => {
-        Net.role = 'host';
-        Net.initPeer();
+        UI.show('scr-lobby');
+        GAME.role = 'host'; GAME.playerId = 0;
+        Network.init();
     },
     join: () => {
-        const id = document.getElementById('join-inp').value.trim();
+        const id = $('host-id-input').value.trim();
         if(!id) return alert("Введите ID!");
-        Net.role = 'client';
-        Net.initPeer(id);
+        GAME.role = 'client'; GAME.playerId = 1;
+        UI.show('scr-lobby');
+        Network.init(id);
     },
-    initPeer: (connectToId = null) => {
-        log("Init Peer...");
-        // ВАЖНО: Мы используем облачный сервер PeerJS. Иногда он перегружен.
-        Net.peer = new Peer({ debug: 1 });
-        
-        Net.peer.on('open', (id) => {
-            Net.id = id;
-            log(`MY ID: ${id}`);
-            if(Net.role === 'host') {
-                UI.show('scr-room');
-                document.getElementById('my-id-display').innerText = id;
-            } else if(connectToId) {
-                Net.connect(connectToId);
+    init: (connectTo = null) => {
+        Network.peer = new Peer({ debug: 1 });
+        Network.peer.on('open', (id) => {
+            if(GAME.role === 'host') $('my-id-display').value = id;
+            if(connectTo) {
+                log("Connecting...");
+                Network.conn = Network.peer.connect(connectTo);
+                Network.setupConn();
             }
         });
-
-        Net.peer.on('connection', (c) => {
-            log("Incoming connection...");
-            Net.conn = c;
-            Net.setupConn();
+        Network.peer.on('connection', (c) => {
+            Network.conn = c;
+            Network.setupConn();
         });
-
-        Net.peer.on('error', (err) => {
-            log(`PEER ERROR: ${err.type}`);
-            alert(`Ошибка сети: ${err.type}. Попробуйте Wi-Fi или обновите.`);
-        });
-        
-        Net.peer.on('disconnected', () => {
-             log("Peer Disconnected. Reconnecting...");
-             Net.peer.reconnect();
-        });
-    },
-    connect: (destId) => {
-        log(`Connecting to ${destId}...`);
-        Net.conn = Net.peer.connect(destId);
-        Net.setupConn();
+        Network.peer.on('error', err => log("ERR: "+err));
     },
     setupConn: () => {
-        Net.conn.on('open', () => {
-            log("CONNECTED TO PARTNER!");
-            if(Net.role === 'host') {
-                document.getElementById('player-status').innerText = "Игрок 2 подключен!";
-                document.getElementById('player-status').style.color = "#0f0";
-                document.getElementById('game-selector').classList.remove('hidden');
+        Network.conn.on('open', () => {
+            log("Connected!");
+            if(GAME.role === 'host') {
+                $('status-msg').innerText = "Игрок найден! Запуск...";
+                setTimeout(GameLogic.init, 1000);
             } else {
-                UI.show('scr-lobby');
-                document.querySelector('#scr-lobby h2').innerText = "Ожидаем выбора игры...";
+                $('status-msg').innerText = "Подключено! Ждем хоста...";
             }
         });
-
-        Net.conn.on('data', (data) => {
-            if(data.type === 'START') { Game.init(data.mode); }
-            if(data.type === 'STATE') { Game.syncState(data.st); }
-            if(data.type === 'INPUT') { Logic.p2Inp = data.val; }
+        Network.conn.on('data', data => {
+            if(data.t === 'START') { GameLogic.start(data.seed); }
+            if(data.t === 'STATE') { Client.sync(data.s); }
+            if(data.t === 'INPUT') { Server.handleInput(1, data.i); } // Только хост получает инпут от P2
         });
-        
-        Net.conn.on('close', () => { alert("Второй игрок отключился!"); location.reload(); });
+        Network.conn.on('close', () => alert("Соединение разорвано"));
     }
 };
 
-// === GAME ENGINE ===
-const CONFIG = {
-    w: 0, h: 0, 
-    c: { p1: '#0ff', p2: '#f05', wall: '#ddd', bullet: '#ffaa00' }
-};
-
-const Input = { 
-    x:0, y:0, ax:0, ay:0, action: false, spawnIdx: null,
-    reset: () => { Input.x=0; Input.y=0; Input.ax=0; Input.ay=0; Input.action=false; Input.spawnIdx=null; } 
-};
-
-const Game = {
-    mode: null, running: false, 
-    ctx: document.getElementById('ctx').getContext('2d'),
-
-    start: (mode) => {
-        if(Net.conn) Net.conn.send({ type: 'START', mode: mode });
-        Game.init(mode);
-    },
-    init: (mode) => {
-        log(`Starting Game: ${mode}`);
-        Game.mode = mode;
-        CONFIG.w = window.innerWidth; CONFIG.h = window.innerHeight;
-        document.getElementById('ctx').width = CONFIG.w;
-        document.getElementById('ctx').height = CONFIG.h;
-        
-        UI.show('scr-game');
-        
-        // Setup HUD
-        document.getElementById('controls-stick').classList.toggle('hidden', mode === 'clash');
-        document.getElementById('controls-action').classList.toggle('hidden', mode === 'clash' || mode === 'dots');
-        document.getElementById('clash-ui').classList.toggle('hidden', mode !== 'clash');
-        
-        if(mode === 'clash') Clash.initUI();
-        
-        if(Net.role === 'host') Logic.init();
-        Game.running = true;
-        Game.loop();
-    },
-    loop: () => {
-        if(!Game.running) return;
-        requestAnimationFrame(Game.loop);
-        
-        if(Net.role === 'host') {
-            Logic.update();
-            Net.conn.send({ type: 'STATE', st: Logic.state });
-            Renderer.render(Logic.state);
-        } else {
-            // Клиент просто шлет ввод
-            if(Game.mode !== 'clash')
-                Net.conn.send({ type: 'INPUT', val: Input });
-            else
-                Net.conn.send({ type: 'INPUT', val: { spawnIdx: Input.spawnIdx } });
-            
-            // Если была карточка - сбрасываем нажатие после отправки
-            Input.spawnIdx = null; 
-        }
-    },
-    syncState: (state) => {
-        Renderer.render(state);
-    }
-};
-
-// === GAME LOGIC (HOST ONLY) ===
-const Logic = {
-    state: {}, p2Inp: {}, 
+// ================= LOGIC & PHYSICS (HOST ONLY) =================
+const Server = {
+    seed: 0, w: 2000, h: 2000, // Размер карты
+    t: 0, creepTimer: 0,
     
-    init: () => {
-        Logic.state = {
-            t: 0, p1s: 0, p2s: 0, 
-            ents: [], fx: [], mode: Game.mode
-        };
-        const s = Logic.state;
+    spawn: (type, team, x, y, aiMode=null) => {
+        const id = Math.random().toString(36).substr(2,9);
+        const stats = type === 'hero' ? (team===0 ? HEROES.knight : HEROES.mage) :
+                      type === 'creep' ? { hp:150, maxHp:150, dmg:10, spd:2, range:30, bounty:40 } :
+                      type === 'tower' ? { hp:1500, maxHp:1500, dmg:40, spd:0, range:250, bounty:200 } :
+                      { hp:3000, maxHp:3000, dmg:0, spd:0, range:0, bounty:0 }; // ancient
 
-        if(Game.mode === 'tanks') {
-            s.p1 = { x: 100, y: CONFIG.h/2, hp: 100, cd: 0, angle: 0 };
-            s.p2 = { x: CONFIG.w-100, y: CONFIG.h/2, hp: 100, cd: 0, angle: Math.PI };
-            s.map = [];
-            // Generate Map
-            for(let i=0; i<10; i++) 
-                s.map.push({x: Math.random()*CONFIG.w, y: Math.random()*CONFIG.h, w: 30+Math.random()*50, h: 30+Math.random()*80});
-        }
-        else if(Game.mode === 'clash') {
-             s.elixir = { p1: 5, p2: 5 };
-        }
-        else if(Game.mode === 'dots') {
-             s.p1 = { x: 200, y: 300, r: 15 };
-             s.p2 = { x: 600, y: 300, r: 15 };
-             s.food = [];
-        }
+        GAME.ents.push({
+            id, type, team, x, y, 
+            hp: stats.hp, maxHp: stats.maxHp || stats.hp,
+            dmg: stats.dmg, spd: stats.spd, range: stats.range,
+            mp: stats.mp||0, maxMp: stats.maxMp||0,
+            skills: stats.skills||[], skillCD: [0,0,0],
+            cd: 0, // Attack cooldown
+            ai: aiMode, targetId: null,
+            lvl: 1, xp: 0, gold: team<2 ? 600 : 0,
+            vx: 0, vy: 0, // Velocity
+            dead: false
+        });
     },
 
     update: () => {
-        const s = Logic.state; s.t++;
-        const i1 = Input; const i2 = Logic.p2Inp;
+        Server.t++;
+        const ents = GAME.ents;
 
-        if(s.mode === 'tanks') Tanks.upd(s, i1, i2);
-        else if(s.mode === 'clash') Clash.upd(s, i1, i2);
-        else if(s.mode === 'dots') Dots.upd(s, i1, i2);
-
-        // Physics Cleanup
-        s.ents = s.ents.filter(e => e.active);
-    }
-};
-
-// --- MODE: TANKS ---
-const Tanks = {
-    upd: (s, i1, i2) => {
-        // Move
-        const spd = 4;
-        [ {p:s.p1, i:i1}, {p:s.p2, i:i2} ].forEach((obj, idx) => {
-            const p = obj.p; const inp = obj.i;
-            p.x += inp.x * spd; p.y += inp.y * spd;
-            if(Math.abs(inp.ax)+Math.abs(inp.ay) > 0.1) 
-                p.angle = Math.atan2(inp.ay, inp.ax);
-            
-            // Walls Collide
-            p.x = Math.max(0, Math.min(CONFIG.w, p.x));
-            p.y = Math.max(0, Math.min(CONFIG.h, p.y));
-            s.map.forEach(w => {
-                 if(p.x>w.x && p.x<w.x+w.w && p.y>w.y && p.y<w.y+w.h) {
-                     p.x -= inp.x*spd; p.y -= inp.y*spd;
-                 }
-            });
-
-            // Shoot
-            if(p.cd>0) p.cd--;
-            if(inp.action && p.cd <= 0) {
-                s.ents.push({
-                    type: 'bull', owner: idx, 
-                    x: p.x + Math.cos(p.angle)*30, y: p.y + Math.sin(p.angle)*30, 
-                    vx: Math.cos(p.angle)*12, vy: Math.sin(p.angle)*12, active:true
-                });
-                p.cd = 15;
-            }
-        });
-
-        // Bullets
-        s.ents.forEach(b => {
-            b.x += b.vx; b.y += b.vy;
-            if(b.x<0||b.x>CONFIG.w||b.y<0||b.y>CONFIG.h) b.active=false;
-            // Hit Map
-            s.map.forEach(w => {
-                if(b.x>w.x && b.x<w.x+w.w && b.y>w.y && b.y<w.y+w.h) { b.active=false; }
-            });
-            // Hit Player
-            let enemy = b.owner===0 ? s.p2 : s.p1;
-            if(Math.hypot(b.x-enemy.x, b.y-enemy.y) < 25) {
-                b.active = false;
-                s[b.owner===0?'p1s':'p2s']++;
-                enemy.x = Math.random()*CONFIG.w; enemy.y = Math.random()*CONFIG.h; // Respawn
-            }
-        });
-    }
-};
-
-// --- MODE: CLASH ---
-const CARDS = [
-    { name: 'WAR', hp: 50, spd: 2, c: 2, dmg: 1, type: 'a' },
-    { name: 'TANK', hp: 150, spd: 1, c: 4, dmg: 2, type: 'b' },
-    { name: 'FAST', hp: 30, spd: 5, c: 2, dmg: 3, type: 'c' }
-];
-
-const Clash = {
-    initUI: () => {
-        const d = document.getElementById('card-dock'); d.innerHTML = '';
-        CARDS.forEach((c, idx) => {
-            let el = document.createElement('div');
-            el.className = 'card';
-            el.innerHTML = `<div class="cost-bubble">${c.c}</div><div>${c.name}</div>`;
-            el.ontouchstart = () => { Input.spawnIdx = idx; }; 
-            // для мыши тоже
-            el.onmousedown = () => { Input.spawnIdx = idx; };
-            d.appendChild(el);
-        });
-    },
-    upd: (s, i1, i2) => {
-        if(s.t % 60 === 0) { // +1 Elixir/sec
-            if(s.elixir.p1 < 10) s.elixir.p1++;
-            if(s.elixir.p2 < 10) s.elixir.p2++;
+        // 1. Spawner
+        if(Server.t % 1800 === 0) { // Каждые 30 сек (при 60fps)
+            // Radiants (Team 0) Bottom-Left
+            Server.spawn('creep', 0, 200, Server.h - 200, 'lane');
+            Server.spawn('creep', 0, 250, Server.h - 150, 'lane');
+            Server.spawn('creep', 0, 150, Server.h - 250, 'lane');
+            // Dires (Team 1) Top-Right
+            Server.spawn('creep', 1, Server.w-200, 200, 'lane');
+            Server.spawn('creep', 1, Server.w-250, 150, 'lane');
+            Server.spawn('creep', 1, Server.w-150, 250, 'lane');
         }
 
-        // Spawn logic
-        const spawn = (owner, idx) => {
-            if(idx === null || idx === undefined) return;
-            const unit = CARDS[idx];
-            const pEl = owner===0?s.elixir.p1:s.elixir.p2;
-            if(pEl >= unit.c) {
-                s.ents.push({
-                    type:'unit', owner:owner, max: unit.hp, hp: unit.hp, 
-                    spd: unit.spd, dmg: unit.dmg, active:true,
-                    x: owner===0 ? 40 : CONFIG.w-40,
-                    y: 100 + Math.random()*(CONFIG.h-200)
-                });
-                if(owner===0) s.elixir.p1 -= unit.c; else s.elixir.p2 -= unit.c;
+        // 2. Physics & Logic
+        ents.forEach(e => {
+            if(e.dead) return;
+
+            // Regen
+            if(Server.t%60===0) { 
+                if(e.hp < e.maxHp) e.hp += 1;
+                if(e.mp && e.mp < e.maxMp) e.mp += 2;
+                e.skillCD = e.skillCD.map(c => c > 0 ? c-1 : 0);
+                if(e.respawnTimer > 0) e.respawnTimer--;
             }
-        };
 
-        if(i1 && i1.spawnIdx!==null) { spawn(0, i1.spawnIdx); i1.spawnIdx = null; }
-        if(i2 && i2.spawnIdx!==null) { spawn(1, i2.spawnIdx); Logic.p2Inp.spawnIdx = null; }
-
-        // Logic
-        s.ents.forEach(u => {
-            // Find target
-            let target = null; let minD = 200;
-            s.ents.forEach(e => {
-                if(e.owner !== u.owner) {
-                    let d = Math.hypot(u.x-e.x, u.y-e.y);
-                    if(d < minD) { minD = d; target = e; }
+            // Input Movement (Heroes)
+            if(e.type === 'hero') {
+                e.x += e.vx * e.spd;
+                e.y += e.vy * e.spd;
+            } 
+            // AI Movement (Creeps)
+            else if(e.type === 'creep' && e.ai === 'lane') {
+                // Идем по диагонали (с угла в угол)
+                let tx = e.team===0 ? Server.w-200 : 200;
+                let ty = e.team===0 ? 200 : Server.h-200;
+                
+                // Простой AI атаки: ищем врага рядом
+                let enemy = ents.find(x => !x.dead && x.team !== e.team && dist(e,x) < 200);
+                if(enemy) {
+                    tx = enemy.x; ty = enemy.y;
+                    // Если в рендже атаки - стоп
+                    if(dist(e,enemy) < e.range) { tx = e.x; ty = e.y; }
                 }
-            });
 
-            if(target && minD < 30) {
-                if(s.t%20===0) target.hp -= u.dmg;
-            } else {
-                if(target) { // move to target
-                     let a = Math.atan2(target.y-u.y, target.x-u.x);
-                     u.x += Math.cos(a)*u.spd; u.y += Math.sin(a)*u.spd;
-                } else { // forward
-                     u.x += (u.owner===0 ? 1 : -1) * u.spd;
+                const angle = Math.atan2(ty - e.y, tx - e.x);
+                if(dist(e, {x:tx, y:ty}) > 5) {
+                    e.x += Math.cos(angle) * e.spd;
+                    e.y += Math.sin(angle) * e.spd;
                 }
             }
-            if(u.hp<=0) u.active=false;
-            if(u.x<0 || u.x>CONFIG.w) {
-                u.active = false;
-                if(u.owner===0) s.p1s++; else s.p2s++;
-            }
-        });
-    }
-};
 
-// --- MODE: DOTS ---
-const Dots = {
-    upd: (s, i1, i2) => {
-        const move = (p, i) => { 
-            p.x+=i.x*4; p.y+=i.y*4; 
-            if(p.x<0)p.x=0; if(p.y<0)p.y=0;
-        };
-        move(s.p1, i1); move(s.p2, i2 || {x:0,y:0});
+            // Clamping
+            e.x = Math.max(0, Math.min(Server.w, e.x));
+            e.y = Math.max(0, Math.min(Server.h, e.y));
 
-        // Food gen
-        if(s.t % 30 === 0 && s.food.length < 50) 
-            s.food.push({x:Math.random()*CONFIG.w, y:Math.random()*CONFIG.h, active:true});
-
-        // Eat
-        const check = (p, idx) => {
-            s.food.forEach(f => {
-                if(f.active && Math.hypot(p.x-f.x, p.y-f.y) < p.r) {
-                    f.active = false;
-                    p.r += 0.5;
-                    s[idx===0?'p1s':'p2s']++;
+            // Auto Attack
+            if(e.cd > 0) e.cd--;
+            else {
+                let target = ents.find(t => !t.dead && t.team !== e.team && dist(e,t) <= e.range + 20); // +20 радиус тела
+                if(target) {
+                    GAME.projectiles.push({
+                        x:e.x, y:e.y, tx:target.id, dmg:e.dmg, spd:8, 
+                        color: e.team===0 ? '#0f0':'#f00', type:'aa'
+                    });
+                    e.cd = 60; // 1 atk/sec
                 }
-            });
-        };
-        check(s.p1, 0); check(s.p2, 1);
-        s.food = s.food.filter(f=>f.active);
+            }
+        });
 
-        // Win
-        if(s.p1.r > s.p2.r && Math.hypot(s.p1.x-s.p2.x, s.p1.y-s.p2.y) < s.p1.r) s.p1s+=5;
-    }
-}
+        // 3. Projectiles
+        for(let i=GAME.projectiles.length-1; i>=0; i--) {
+            let p = GAME.projectiles[i];
+            let target = ents.find(x => x.id === p.tx);
+            if(!target || target.dead) { GAME.projectiles.splice(i,1); continue; }
 
+            let ang = Math.atan2(target.y-p.y, target.x-p.x);
+            p.x += Math.cos(ang) * p.spd;
+            p.y += Math.sin(ang) * p.spd;
 
-// === RENDERER ===
-const Renderer = {
-    render: (s) => {
-        if(!s) return;
-        const ctx = Game.ctx;
-        ctx.fillStyle = '#050510'; ctx.fillRect(0,0,CONFIG.w, CONFIG.h);
+            if(dist(p, target) < 20) {
+                target.hp -= p.dmg;
+                GAME.fx.push({x:target.x, y:target.y, t:10, txt:`-${p.dmg}`}); // Hit marker
+                GAME.projectiles.splice(i,1);
 
-        // Grid bg
-        ctx.strokeStyle='rgba(255,255,255,0.03)'; ctx.lineWidth=1;
-        for(let i=0; i<CONFIG.w; i+=50) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,CONFIG.h); ctx.stroke(); }
-
-        // HUD Text Update
-        document.getElementById('s1').innerText = s.p1s;
-        document.getElementById('s2').innerText = s.p2s;
-
-        if(s.mode === 'tanks') {
-            // Walls
-            ctx.fillStyle = '#445'; 
-            ctx.shadowBlur=10; ctx.shadowColor='#000';
-            s.map.forEach(w => ctx.fillRect(w.x, w.y, w.w, w.h));
-            ctx.shadowBlur=0;
-            
-            // Tanks
-            Renderer.tank(s.p1, CONFIG.c.p1);
-            Renderer.tank(s.p2, CONFIG.c.p2);
-            
-            // Bullets
-            ctx.fillStyle='#fff';
-            s.ents.forEach(b => {
-                ctx.beginPath(); ctx.arc(b.x, b.y, 4, 0, 7); ctx.fill();
-            });
-        }
-        else if(s.mode === 'clash') {
-            ctx.beginPath(); ctx.strokeStyle='#333'; ctx.moveTo(CONFIG.w/2, 0); ctx.lineTo(CONFIG.w/2, CONFIG.h); ctx.stroke();
-            
-            s.ents.forEach(u => {
-                const c = u.owner===0 ? CONFIG.c.p1 : CONFIG.c.p2;
-                ctx.fillStyle = c; ctx.shadowBlur=10; ctx.shadowColor=c;
-                ctx.beginPath(); ctx.arc(u.x, u.y, 10 + (u.hp/50), 0, 7); ctx.fill();
-            });
-            ctx.shadowBlur=0;
-
-            if(document.getElementById('elixir-fill')) {
-                const me = Net.role==='host'?s.elixir.p1:s.elixir.p2;
-                document.getElementById('elixir-fill').style.height = (me*10)+'%';
+                // Death Logic
+                if(target.hp <= 0) {
+                    target.dead = true;
+                    // Give rewards logic could be complex (find owner of proj), simplifying:
+                    // If target is hero, longer respawn. Ancient = GG.
+                    if(target.type === 'ancient') {
+                        Server.endGame(target.team === 0 ? 'Dire' : 'Radiant');
+                    }
+                    if(target.type === 'hero') {
+                         setTimeout(() => { // RESPAWN
+                            target.dead = false; target.hp = target.maxHp; target.mp = target.maxMp;
+                            target.x = target.team===0 ? 100 : Server.w-100;
+                            target.y = target.team===0 ? Server.h-100 : 100;
+                         }, 5000);
+                    }
+                }
             }
         }
-        else if(s.mode === 'dots') {
-            ctx.fillStyle='gold';
-            s.food.forEach(f => { ctx.fillRect(f.x-2, f.y-2, 4, 4); });
-            ctx.globalAlpha=0.8;
-            ctx.fillStyle=CONFIG.c.p1; ctx.beginPath(); ctx.arc(s.p1.x, s.p1.y, s.p1.r, 0, 7); ctx.fill();
-            ctx.fillStyle=CONFIG.c.p2; ctx.beginPath(); ctx.arc(s.p2.x, s.p2.y, s.p2.r, 0, 7); ctx.fill();
-            ctx.globalAlpha=1;
-        }
-    },
-    tank: (t, c) => {
-        const ctx = Game.ctx;
-        ctx.translate(t.x, t.y);
-        ctx.rotate(t.angle);
-        ctx.fillStyle = c;
-        ctx.shadowBlur=15; ctx.shadowColor=c;
-        ctx.fillRect(-20, -15, 30, 30); // body
-        ctx.fillStyle = '#fff';
-        ctx.fillRect(0, -5, 40, 10); // gun
-        ctx.shadowBlur=0;
-        ctx.rotate(-t.angle);
-        ctx.translate(-t.x, -t.y);
-    }
-};
-
-// === INPUT SYSTEM (JOYSTICKS) ===
-const Joy = {
-    setup: (id, cb) => {
-        const zone = document.getElementById(id);
-        const stick = zone.querySelector('.joystick-stick');
-        let drag=false, start={x:0,y:0}, r=50;
-
-        const move = (cx, cy) => {
-            let dx = cx - start.x, dy = cy - start.y;
-            const dist = Math.min(Math.hypot(dx,dy), r);
-            const ang = Math.atan2(dy, dx);
-            const ox = Math.cos(ang)*dist, oy = Math.sin(ang)*dist;
-            stick.style.transform = `translate(${ox}px, ${oy}px)`;
-            cb(ox/r, oy/r);
-        };
-
-        zone.addEventListener('touchstart', e => {
-            drag=true; const b=zone.getBoundingClientRect(); 
-            start = {x: b.left+60, y: b.top+60};
-            move(e.touches[0].clientX, e.touches[0].clientY);
-            if(id === 'joy-act') Input.action = true;
-        });
-        zone.addEventListener('touchmove', e => {
-            if(drag) { e.preventDefault(); move(e.touches[0].clientX, e.touches[0].clientY); }
-        });
-        zone.addEventListener('touchend', () => {
-            drag=false; stick.style.transform = `translate(0,0)`; cb(0,0);
-            if(id === 'joy-act') Input.action = false;
-        });
         
-        // PC Mouse support (для тестов)
-        zone.onmousedown = (e) => {
-             drag=true; const b=zone.getBoundingClientRect(); start = {x: b.left+60, y: b.top+60};
-             if(id === 'joy-act') Input.action = true;
+        // FX Clean
+        GAME.fx = GAME.fx.filter(f => f.t-- > 0);
+    },
+
+    handleInput: (pid, inp) => {
+        // Найдем героя игрока
+        const h = GAME.ents.find(e => e.type === 'hero' && e.team === pid);
+        if(!h || h.dead) return;
+        
+        // Move
+        if(inp.type === 'move') { h.vx = inp.x; h.vy = inp.y; }
+        
+        // Attack stop
+        if(inp.type === 'atk') { /* Manual attack logic or just move to stop */ }
+
+        // Skills
+        if(inp.type === 'skill') {
+            const skillIdx = inp.slot;
+            // Определим индекс скилла в общем массиве
+            const baseIdx = (h.team === 0 ? 0 : 3) + skillIdx;
+            const skillData = SKILLS_DB[baseIdx];
+
+            if(h.mp >= skillData.cost && h.skillCD[skillIdx] <= 0) {
+                h.mp -= skillData.cost;
+                h.skillCD[skillIdx] = skillData.cd;
+
+                // Simple Skill implementation
+                if(skillData.type === 'area' || skillData.type === 'target') {
+                    // AoE around self or simple blast
+                    GAME.fx.push({x:h.x, y:h.y, t:30, r:skillData.range, color:'rgba(255,255,0,0.5)'});
+                    GAME.ents.filter(e => e.team !== h.team && dist(h,e) < skillData.range).forEach(e => {
+                        e.hp -= skillData.dmg;
+                        if(e.hp<=0) e.dead=true;
+                    });
+                }
+            }
+        }
+    },
+    
+    endGame: (winner) => {
+        GAME.running = false;
+        Network.conn.send({ t:'STATE', s: {win:winner} }); // Special Packet
+        UI.showEnd(winner);
+    },
+
+    // Создает чистый снапшот для отправки
+    packState: () => {
+        return {
+            t: Server.t,
+            ents: GAME.ents.map(e => ({
+                id:e.id, type:e.type, team:e.team, x:Math.round(e.x), y:Math.round(e.y), 
+                hp:e.hp, maxHp:e.maxHp, mp:e.mp, maxMp:e.maxMp, 
+                lvl:e.lvl, gold:e.gold, cd:e.skillCD, dead:e.dead,
+                // Client-side render needs basic static info too? Optimization needed for big games
+            })),
+            fx: GAME.fx,
+            projs: GAME.projectiles.map(p => ({x:Math.round(p.x), y:Math.round(p.y), c:p.color}))
         };
-        window.onmousemove = (e) => { if(drag) move(e.clientX, e.clientY); };
-        window.onmouseup = () => { if(drag) {drag=false; stick.style.transform='translate(0,0)'; cb(0,0); Input.action=false;} };
     }
 };
 
-Joy.setup('joy-move', (x,y) => { Input.x=x; Input.y=y; });
-Joy.setup('joy-act', (x,y) => { Input.ax=x; Input.ay=y; });
+// ================= CLIENT SIDE =================
+const Client = {
+    myHero: null,
+    
+    sync: (s) => {
+        if(s.win) { GAME.running = false; UI.showEnd(s.win); return; }
 
-// --- UTILS ---
+        // Merge state. For simplicity in this demo, we replace logic ents with render proxies
+        // But client host just draws local ents.
+        if(GAME.role === 'client') {
+             GAME.ents = s.ents; // In real Dota, interpolations happens here
+             GAME.fx = s.fx;
+             GAME.projectiles = s.projs;
+        }
+
+        // HUD Update
+        const myH = GAME.ents.find(e => e.type==='hero' && e.team === GAME.playerId);
+        if(myH) {
+            Client.myHero = myH;
+            $('hud-hp').innerText = Math.round(myH.hp) + "/" + myH.maxHp;
+            $('hud-gold').innerText = myH.gold;
+            $('hud-lvl').innerText = myH.lvl;
+            
+            // Skill CDs
+            [0,1,2].forEach(i => {
+                let cd = myH.cd ? myH.cd[i] : 0;
+                const el = document.getElementById(['cd-q','cd-w','cd-r'][i]);
+                el.innerText = cd > 0 ? cd : '';
+                el.style.opacity = cd > 0 ? 1 : 0;
+            });
+            
+            // Camera follow
+            GAME.camera.x = myH.x - GAME.width/2;
+            GAME.camera.y = myH.y - GAME.height/2;
+        }
+    }
+};
+
+const Inp = {
+    vx:0, vy:0,
+    setup: () => {
+        // Keyboard (PC)
+        window.addEventListener('keydown', e => {
+            if(e.code === 'KeyQ') Inp.useSkill(0);
+            if(e.code === 'KeyW') Inp.useSkill(1);
+            if(e.code === 'KeyR') Inp.useSkill(2);
+        });
+
+        // Mouse right click move
+        $('game-view').addEventListener('contextmenu', e => {
+            e.preventDefault();
+            // Convert screen to world
+            const rect = $('cvs').getBoundingClientRect();
+            const wx = e.clientX - rect.left + GAME.camera.x;
+            const wy = e.clientY - rect.top + GAME.camera.y;
+            
+            if(Client.myHero) {
+                // Vector to target
+                const dx = wx - Client.myHero.x, dy = wy - Client.myHero.y;
+                const dist = Math.hypot(dx,dy);
+                const nx = dx/dist, ny = dy/dist;
+                Network.conn.send({ t:'INPUT', i: {type:'move', x:nx, y:ny} });
+                
+                // Show Move Marker
+                GAME.fx.push({x:wx, y:wy, t:20, type:'mark'});
+                
+                // Stop automatically after reaching? (Hard in simple packet sys)
+                // Just toggle off after 1 sec in this demo style
+                setTimeout(() => Network.conn.send({t:'INPUT', i:{type:'move',x:0,y:0}}), dist*5);
+            }
+        });
+
+        // Touch Joystick
+        const j = $('joystick-zone');
+        let jData = { active:false, sx:0, sy:0 };
+        
+        j.addEventListener('touchstart', e=>{ 
+            jData.active=true; 
+            const t = e.touches[0]; jData.sx = t.clientX; jData.sy = t.clientY;
+        });
+        j.addEventListener('touchmove', e=>{
+            if(!jData.active) return;
+            const t = e.touches[0];
+            const dx = t.clientX - jData.sx, dy = t.clientY - jData.sy;
+            const dist = Math.min(Math.hypot(dx,dy), 40);
+            const ang = Math.atan2(dy, dx);
+            
+            const nx = Math.cos(ang), ny = Math.sin(ang);
+            $('.joy-stick').style.transform = `translate(${nx*dist}px, ${ny*dist}px)`;
+            
+            Network.conn.send({ t:'INPUT', i: {type:'move', x:nx, y:ny} });
+        });
+        j.addEventListener('touchend', e=>{
+             jData.active=false;
+             $('.joy-stick').style.transform = `translate(0px, 0px)`;
+             Network.conn.send({ t:'INPUT', i: {type:'move', x:0, y:0} });
+        });
+    },
+    useSkill: (slot) => {
+        Network.conn.send({ t:'INPUT', i: {type:'skill', slot: slot} });
+    },
+    attack: () => {
+         // Stop command essentially
+         Network.conn.send({ t:'INPUT', i: {type:'move', x:0, y:0} });
+    }
+};
+
+const Render = {
+    ctx: $('cvs').getContext('2d'),
+    
+    loop: () => {
+        if(!GAME.running) return;
+        requestAnimationFrame(Render.loop);
+        
+        // Host Logical Tick
+        if(GAME.role === 'host') {
+             Server.update();
+             if(Server.t % 3 === 0) { // Sync rate limiter 20hz
+                 Network.conn.send({ t:'STATE', s:Server.packState() });
+                 Client.sync(Server.packState()); // Update local display immediately
+             }
+        }
+
+        const c = Render.ctx;
+        c.fillStyle = '#1e1e1e';
+        c.fillRect(0,0,GAME.width, GAME.height);
+
+        c.save();
+        // Camera Translate
+        c.translate(-GAME.camera.x, -GAME.camera.y);
+
+        // Draw Map (Diagonal Lane)
+        c.strokeStyle = '#333';
+        c.lineWidth = 100;
+        c.beginPath(); 
+        c.moveTo(100, 2000-100); c.lineTo(2000-100, 100); 
+        c.stroke(); // River/Path visual
+        
+        c.strokeStyle = 'cyan'; c.lineWidth = 20; // River center
+        c.beginPath(); c.moveTo(0, 2000); c.lineTo(2000, 0); c.stroke();
+
+        // Draw Ents
+        GAME.ents.forEach(e => {
+            if(e.dead) return;
+
+            // Visuals
+            const size = e.type==='hero'?20 : e.type==='tower'?30:e.type==='ancient'?50:10;
+            c.fillStyle = e.team === 0 ? (e.type==='creep'?'#363':'#4f4') : (e.type==='creep'?'#633':'#f44');
+            
+            // Shadows
+            c.beginPath(); c.ellipse(e.x, e.y+size, size, size/2, 0, 0, Math.PI*2);
+            c.fillStyle="rgba(0,0,0,0.5)"; c.fill();
+
+            // Body
+            c.fillStyle = e.type === 'hero' ? (e.team===0 ? HEROES.knight.color : HEROES.mage.color) : (e.team===0?'#686':'#866');
+            if(e.type === 'tower') c.fillStyle = '#aaa';
+            
+            c.beginPath(); c.arc(e.x, e.y, size, 0, Math.PI*2); c.fill();
+            c.lineWidth=2; c.strokeStyle="#000"; c.stroke();
+
+            // HP Bar
+            const barW = size*2;
+            const pct = e.hp / e.maxHp;
+            c.fillStyle = '#000'; c.fillRect(e.x-barW/2, e.y-size-15, barW, 6);
+            c.fillStyle = e.team===GAME.playerId ? '#0f0' : '#f00'; 
+            c.fillRect(e.x-barW/2, e.y-size-15, barW*pct, 6);
+            
+            // Name/Level
+            if(e.type === 'hero') {
+                c.fillStyle = '#fff'; c.font = "10px sans-serif"; c.textAlign="center";
+                c.fillText(`Lv.${e.lvl}`, e.x, e.y - size - 18);
+            }
+        });
+
+        // Projectiles
+        GAME.projectiles.forEach(p => {
+             c.fillStyle = p.color || '#fff';
+             c.beginPath(); c.arc(p.x, p.y, 4, 0, Math.PI*2); c.fill();
+        });
+
+        // FX
+        GAME.fx.forEach(f => {
+            if(f.txt) { c.fillStyle = '#fff'; c.font="14px bold monospace"; c.fillText(f.txt, f.x, f.y - (30-f.t)); }
+            if(f.r) { c.fillStyle=f.color; c.beginPath(); c.arc(f.x,f.y, f.r * (f.t/30), 0, Math.PI*2); c.fill(); }
+            if(f.type === 'mark') { c.strokeStyle = '#0f0'; c.beginPath(); c.moveTo(f.x-5, f.y); c.lineTo(f.x+5, f.y); c.moveTo(f.x, f.y-5); c.lineTo(f.x, f.y+5); c.stroke();}
+        });
+
+        c.restore();
+    }
+};
+
+const GameLogic = {
+    start: () => {
+        UI.show('scr-game');
+        
+        // Resize Canvas
+        const updateSz = () => { GAME.width=$('game-view').clientWidth; GAME.height=$('game-view').clientHeight; $('cvs').width=GAME.width; $('cvs').height=GAME.height; };
+        window.onresize = updateSz; updateSz();
+
+        Inp.setup();
+        
+        // Load Icons (Mockup)
+        const role = GAME.role==='host' ? HEROES.knight : HEROES.mage;
+        $('icon-q').innerText = role.skills[0];
+        $('icon-w').innerText = role.skills[1];
+        $('icon-r').innerText = role.skills[2];
+
+        // Только хост инитит мир
+        if(GAME.role === 'host') {
+            GAME.ents = [];
+            // Spawn Ancients
+            Server.spawn('ancient', 0, 100, 2000-100);
+            Server.spawn('ancient', 1, 2000-100, 100);
+            
+            // Towers
+            Server.spawn('tower', 0, 400, 2000-400);
+            Server.spawn('tower', 1, 2000-400, 400);
+            
+            // Heroes
+            Server.spawn('hero', 0, 150, 2000-150); // Radiant Player
+            Server.spawn('hero', 1, 2000-150, 150); // Dire Player
+
+            Network.conn.send({ t:'START' }); // Start signal to client
+        }
+
+        GAME.running = true;
+        Render.loop();
+    }
+};
+
 const UI = {
     show: (id) => {
         document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
-        const el = document.getElementById(id);
-        el.classList.remove('hidden');
-        if(id === 'scr-game') el.style.display = 'block';
+        $(id).classList.remove('hidden');
+        if(id==='scr-game') $(id).style.display = 'flex';
+    },
+    toJoin: () => UI.show('scr-join'),
+    showEnd: (winTeam) => {
+        $('end-screen').style.display = 'flex';
+        $('end-title').innerText = winTeam + " VICTORY";
+        $('end-title').style.color = winTeam === 'Radiant' ? '#4CAF50' : '#F44336';
     }
-}
+};
+
 </script>
 </body>
 </html>
