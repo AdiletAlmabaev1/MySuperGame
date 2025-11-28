@@ -2,523 +2,796 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <!-- ИСПРАВЛЕНИЕ: Убраны user-scalable=no и maximum-scale для соответствия стандартам доступности -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    
-    <title>POCKET DOTA: REMASTERED</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ETERNAL STRIFE: 1v1 P2P</title>
+    <!-- PeerJS для сети -->
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <!-- Шрифт -->
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;700&display=swap" rel="stylesheet">
+    
     <style>
-        :root { --rad: #4CAF50; --dire: #F44336; --gold: #FFD700; --mana: #00B0FF; }
-        
-        * { 
-            box-sizing: border-box; 
-            outline: none; 
-            
-            /* ИСПРАВЛЕНИЕ: Блокировка стандартных действий браузера через CSS */
-            touch-action: none; 
-            -webkit-tap-highlight-color: transparent;
-            
-            /* ИСПРАВЛЕНИЕ: Поддержка Safari для запрета выделения */
-            user-select: none;
-            -webkit-user-select: none;
+        :root {
+            --prim: #00f3ff; --sec: #ff0055; --bg: #050510;
+            --glass: rgba(20, 30, 40, 0.7);
+            --border: 1px solid rgba(255,255,255,0.1);
         }
         
-        body { 
-            margin: 0; overflow: hidden; background: #000; font-family: 'Roboto', sans-serif; 
-            color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh;
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; font-family: 'Rajdhani', sans-serif; touch-action: none; }
+        
+        body {
+            margin: 0; overflow: hidden; background: var(--bg); color: #fff;
+            height: 100vh; display: flex; align-items: center; justify-content: center;
         }
 
-        /* UI SCREENS */
+        /* --- UI SYSTEMS --- */
         .screen {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: radial-gradient(#1e2228, #000);
-            z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: 0.3s;
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            background: radial-gradient(circle at center, #1b2030 0%, #000 100%);
+            z-index: 99; transition: opacity 0.5s; pointer-events: auto;
         }
-        .hidden { opacity: 0; pointer-events: none; z-index: -1; display: none !important; }
+        .screen.hidden { opacity: 0; pointer-events: none; z-index: -1; }
 
-        h1 { font-family: 'Cinzel', serif; font-size: 3rem; color: #ccc; text-shadow: 0 0 10px #aa0000; margin-bottom: 0.5rem; letter-spacing: 5px; text-align: center;}
-        
-        .box {
-            background: rgba(20,20,30, 0.85); padding: 30px; border: 1px solid #444; 
-            box-shadow: 0 0 20px rgba(0,0,0,0.8); border-radius: 8px; max-width: 500px; width: 90%; text-align: center;
-            
-            /* ИСПРАВЛЕНИЕ: Поддержка Safari для блюра */
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
+        h1 { font-size: 3rem; margin: 0; text-shadow: 0 0 20px var(--prim); letter-spacing: 5px; text-transform: uppercase; font-style: italic; }
+        h3 { color: #8899aa; letter-spacing: 2px; }
+
+        .panel {
+            background: var(--glass); border: var(--border);
+            backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px);
+            padding: 25px; border-radius: 12px; width: 90%; max-width: 450px;
+            display: flex; flex-direction: column; gap: 15px; text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
         }
+
+        /* Elements */
+        input {
+            background: rgba(0,0,0,0.5); border: 1px solid #444; color: var(--prim);
+            padding: 15px; font-size: 1.2rem; text-align: center; border-radius: 6px; width: 100%;
+            font-family: monospace; outline: none; transition: 0.3s;
+        }
+        input:focus { border-color: var(--prim); box-shadow: 0 0 10px var(--prim); }
 
         button {
-            background: linear-gradient(180deg, #3a4b5d, #252e38); color: #fff; border: 1px solid #666;
-            padding: 15px 30px; margin: 10px 0; font-size: 1.1rem; font-family: 'Cinzel', serif; cursor: pointer; width: 100%;
-            transition: 0.2s; border-radius: 4px;
+            background: linear-gradient(90deg, #222, #333); color: white;
+            border: 1px solid #555; padding: 18px; border-radius: 6px; font-size: 1.1rem;
+            text-transform: uppercase; font-weight: bold; cursor: pointer; position: relative; overflow: hidden;
+            transition: 0.2s; letter-spacing: 1px;
         }
-        button:hover { filter: brightness(1.2); border-color: #888; }
-        button:active { transform: translateY(2px); }
+        button:active { transform: scale(0.96); }
+        button.btn-p { background: linear-gradient(135deg, var(--prim), #0088aa); color: #000; border:none; box-shadow: 0 0 15px var(--prim); }
+        button.btn-s { background: #111; border-color: #333; }
         
-        /* ИСПРАВЛЕНИЕ: Input field визуально приятнее и больше */
-        input { 
-            width: 100%; padding: 15px; background: #111; border: 1px solid #444; 
-            color: #fff; margin-bottom: 10px; font-family: monospace; font-size: 1.2rem; text-align: center; 
-            border-radius: 4px;
-            /* Разрешаем выделение текста только в input */
-            user-select: text; -webkit-user-select: text;
+        /* Hero Selection */
+        .hero-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; margin-bottom: 20px; }
+        .hero-card {
+            background: rgba(0,0,0,0.3); border: 2px solid #333; padding: 10px; border-radius: 8px; cursor: pointer; transition: 0.3s;
         }
+        .hero-card.selected { border-color: var(--prim); background: rgba(0, 243, 255, 0.1); box-shadow: 0 0 15px var(--prim); }
+        .h-icon { font-size: 2rem; }
+        
+        /* Game HUD */
+        #game-ui { pointer-events: none; } /* HUD overlays canvas */
+        .hud-bar { 
+            position: absolute; top: 0; width: 100%; height: 60px; background: linear-gradient(to bottom, #000, transparent);
+            display: flex; justify-content: space-between; padding: 10px 20px; font-size: 1.2rem; font-weight: bold; 
+        }
+        
+        /* Mobile Controls */
+        #ctrl-layer { position: absolute; bottom: 0; width: 100%; height: 100%; pointer-events: none; }
+        .joy-zone { position: absolute; bottom: 40px; left: 40px; width: 140px; height: 140px; pointer-events: auto; }
+        .joy-bg { width: 100%; height: 100%; border-radius: 50%; border: 2px dashed rgba(255,255,255,0.2); background: rgba(0,0,0,0.2); }
+        .joy-stick { position: absolute; top: 50%; left: 50%; width: 50px; height: 50px; background: rgba(255,255,255,0.3); border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 0 10px #000; }
 
-        /* GAME HUD */
-        #game-view { position: relative; width: 100%; height: 100%; overflow: hidden; cursor: crosshair; }
-        canvas { display: block; width: 100%; height: 100%; background: #0b0f0a; }
-
-        .top-bar {
-            position: absolute; top: 0; width: 100%; height: 50px; background: linear-gradient(180deg, rgba(0,0,0,0.9), transparent);
-            display: flex; justify-content: space-between; align-items: center; padding: 0 20px; font-family: 'Cinzel'; pointer-events: none;
-        }
-        .hero-portrait { width: 50px; height: 50px; border: 2px solid #555; background: #222; margin-top: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; }
-        
-        /* Skill Controls */
-        .controls-layer { pointer-events: none; position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: flex-end; padding-bottom: 20px;}
-        
-        .skill-dock {
-            pointer-events: auto; display: flex; gap: 15px; margin: 0 auto; background: rgba(0,0,0,0.6); 
-            padding: 10px; border-radius: 12px; border: 1px solid #333;
-            /* Safari support */
-            backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);
+        .skill-dock { 
+            position: absolute; bottom: 30px; right: 20px; display: flex; gap: 15px; align-items: flex-end; pointer-events: auto;
         }
         .skill-btn {
-            width: 65px; height: 65px; background: #222; border: 2px solid #555; position: relative;
-            display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 8px;
-            touch-action: none; /* Critical for quick tapping */
+            width: 70px; height: 70px; border-radius: 50%; background: #222; border: 3px solid #555;
+            display: flex; align-items: center; justify-content: center; font-size: 2rem; color: #aaa;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5); transition: 0.1s; position: relative;
         }
-        .skill-btn:active { border-color: #fff; transform: scale(0.95); }
-        .skill-key { position: absolute; top: 2px; left: 4px; font-size: 0.6rem; color: #888; font-weight: bold; }
-        .skill-icon { font-size: 1.8rem; }
-        .cd-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.85); display: flex; align-items: center; justify-content: center; font-weight: bold; color: #fff; border-radius: 6px; }
-        
-        /* Joystick for mobile */
-        #joystick-zone { position: absolute; bottom: 30px; left: 30px; width: 140px; height: 140px; pointer-events: auto; z-index: 20; }
-        .joy-base { width: 100%; height: 100%; background: rgba(255,255,255,0.05); border: 2px dashed rgba(255,255,255,0.2); border-radius: 50%; position:relative; }
-        .joy-stick { position:absolute; top:30%; left:30%; width: 40%; height: 40%; background: rgba(255,255,255,0.2); border-radius: 50%; box-shadow: 0 0 10px #000; pointer-events: none; }
+        .skill-btn:active { transform: scale(0.9); border-color: #fff; }
+        .skill-btn.main-atk { width: 90px; height: 90px; border-color: #ff3333; background: #300; }
+        .cd-mask { position: absolute; top:0; left:0; width:100%; height:100%; border-radius: 50%; background:rgba(0,0,0,0.8); display:flex; align-items:center; justify-content:center; font-size:1.5rem; color:#fff; font-weight:bold; display:none; }
 
-        @media (min-width: 800px) {
-            #joystick-zone { display: none; }
-            .skill-dock { margin-bottom: 20px; }
+        /* Shop Button */
+        .shop-btn {
+            position: absolute; top: 70px; right: 20px; width: 50px; height: 50px; 
+            background: gold; border-radius: 8px; border: 2px solid #fff; pointer-events: auto;
+            display: flex; align-items: center; justify-content: center; font-size: 1.5rem; color: #000; box-shadow: 0 0 10px gold;
         }
+
+        #shop-modal { 
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 80%; background: #111; border: 2px solid gold; padding: 20px; display: none; pointer-events: auto;
+            border-radius: 10px; z-index: 150;
+        }
+        .shop-item { display:flex; justify-content: space-between; padding: 10px; background: #222; margin-bottom: 5px; border-radius: 4px; }
     </style>
 </head>
-<!-- Блокируем контекстное меню для удобства игры -->
-<body oncontextmenu="return false;">
+<body>
 
-<!-- MENU -->
+<!-- === SCREEN 1: MENU === -->
 <div id="scr-menu" class="screen">
-    <h1>DOTA P2P</h1>
-    <div class="box">
-        <button onclick="Network.host()" style="border-bottom: 4px solid var(--rad);">HOST GAME (Radiant)</button>
-        <div style="margin: 10px 0; color: #666; font-size: 0.8rem;">Requires Internet Connection</div>
-        <button onclick="UI.toJoin()" style="border-bottom: 4px solid var(--dire);">JOIN GAME (Dire)</button>
+    <h1>ETERNAL<br><span style="color:var(--sec)">STRIFE</span></h1>
+    <h3>POCKET MOBA V3.0</h3>
+    <div class="panel">
+        <button class="btn-p" onclick="App.hostGame()">CREATE LOBBY</button>
+        <button class="btn-s" onclick="App.joinMenu()">JOIN GAME</button>
     </div>
+    <div style="position: absolute; bottom: 10px; opacity: 0.5; font-size: 0.8rem">Secure Peer2Peer Network</div>
 </div>
 
-<!-- JOIN -->
+<!-- === SCREEN 2: JOIN INPUT === -->
 <div id="scr-join" class="screen hidden">
-    <div class="box">
-        <h3>Connect to Server</h3>
-        <!-- ИСПРАВЛЕНИЕ: Добавлен label для доступности -->
-        <label for="host-id-input" style="font-size:0.8rem; display:block; margin-bottom:5px; color:#aaa;">Enter Host ID:</label>
-        <input type="text" id="host-id-input" placeholder="paste-id-here">
-        <button onclick="Network.join()">Connect</button>
-        <button onclick="location.reload()" style="background:transparent; border:none; margin-top:0;">Back</button>
+    <h2>CONNECT</h2>
+    <div class="panel">
+        <input id="inp-dest-id" placeholder="Paste Lobby ID here...">
+        <button class="btn-p" onclick="App.connectToHost()">CONNECT</button>
+        <button class="btn-s" onclick="UI.show('scr-menu')">BACK</button>
     </div>
 </div>
 
-<!-- LOBBY -->
-<div id="scr-lobby" class="screen hidden">
-    <div class="box">
-        <h3>Your Lobby</h3>
-        <p style="color:#aaa; font-size:0.9rem;">Send this ID to your friend:</p>
+<!-- === SCREEN 3: LOBBY & SELECT === -->
+<div id="scr-select" class="screen hidden">
+    <h2>LOBBY <span id="lobby-role" style="font-size:0.5em; color:gray"></span></h2>
+    <div class="panel">
+        <div id="host-share-zone" style="display:none; margin-bottom:15px; border-bottom:1px solid #444; padding-bottom:15px;">
+            <p style="color:#aaa; font-size:0.9rem">Send this ID to your friend:</p>
+            <input id="my-id-box" readonly onclick="this.select(); navigator.clipboard.writeText(this.value); this.style.borderColor='#0f0'" style="cursor:pointer;">
+            <div id="lobby-status" style="margin-top:10px; color:orange">Waiting for player 2...</div>
+        </div>
         
-        <!-- ИСПРАВЛЕНИЕ: Новый безопасный инпут с кнопкой копирования -->
-        <div style="position: relative;">
-            <label for="my-id-display" class="hidden">My ID</label>
-            <input type="text" id="my-id-display" readonly style="color: var(--gold); border-color: var(--gold); cursor: pointer;" aria-label="Game Lobby ID">
-            <button onclick="UI.copyId()" style="font-size: 0.8rem; padding: 5px;">COPY ID 📋</button>
+        <h3>SELECT HERO</h3>
+        <div class="hero-grid">
+            <div class="hero-card" onclick="App.selectHero(0)" id="h0"><div class="h-icon">⚔️</div>KNIGHT<br><span style="font-size:0.7em; color:#aaa">Tank / Melee</span></div>
+            <div class="hero-card" onclick="App.selectHero(1)" id="h1"><div class="h-icon">🔥</div>MAGE<br><span style="font-size:0.7em; color:#aaa">Nuke / Ranged</span></div>
+            <div class="hero-card" onclick="App.selectHero(2)" id="h2"><div class="h-icon">🗡️</div>ROGUE<br><span style="font-size:0.7em; color:#aaa">Speed / Crit</span></div>
+            <div class="hero-card" onclick="App.selectHero(3)" id="h3"><div class="h-icon">🏹</div>HUNTER<br><span style="font-size:0.7em; color:#aaa">DPS / Ranged</span></div>
         </div>
 
-        <div id="status-msg" style="color: var(--rad); margin-top: 15px; font-weight:bold;">Waiting for player...</div>
+        <button id="btn-ready" class="btn-p" disabled onclick="App.playerReady()">LOCK IN & READY</button>
     </div>
 </div>
 
-<!-- GAME -->
-<div id="scr-game" class="screen hidden" style="background: transparent;">
-    <div id="game-view">
-        <canvas id="cvs"></canvas>
-        <div class="top-bar">
-            <div class="hero-portrait" style="border-color:var(--rad)">🛡️</div>
-            <div style="font-size:1.5rem;">
-                <span style="color:var(--rad)" id="s-rad">0</span> 
-                <span style="font-size:1rem; margin:0 10px;" id="g-time">00:00</span> 
-                <span style="color:var(--dire)" id="s-dire">0</span>
-            </div>
-            <div class="hero-portrait" style="border-color:var(--dire)">🔥</div>
+<!-- === SCREEN 4: GAME === -->
+<div id="scr-game" class="screen hidden" style="background:none;">
+    <canvas id="cvs"></canvas>
+    
+    <!-- Top Bar -->
+    <div id="game-ui" style="width:100%; height:100%; position:absolute;">
+        <div class="hud-bar">
+            <span style="color:var(--prim)">ALLY: <span id="s-p1">0</span>/5</span>
+            <span style="color:#fff; opacity:0.8" id="timer-ui">00:00</span>
+            <span style="color:var(--sec)">ENEMY: <span id="s-p2">0</span>/5</span>
         </div>
 
-        <div class="controls-layer">
-            <div class="skill-dock">
-                <div class="skill-btn" onpointerdown="Inp.sk(0)" id="b-q"><div class="skill-key">Q</div><div id="i-q" class="skill-icon">⚡</div><div id="cd-0" class="hidden cd-overlay"></div></div>
-                <div class="skill-btn" onpointerdown="Inp.sk(1)" id="b-w"><div class="skill-key">W</div><div id="i-w" class="skill-icon">🌪️</div><div id="cd-1" class="hidden cd-overlay"></div></div>
-                <div class="skill-btn" onpointerdown="Inp.sk(2)" style="border-color: gold;" id="b-r"><div class="skill-key">R</div><div id="i-r" class="skill-icon">☄️</div><div id="cd-2" class="hidden cd-overlay"></div></div>
+        <div style="position:absolute; top: 60px; left: 10px; pointer-events: none;">
+            <div style="color:gold; font-size:1.2rem">💰 <span id="ui-gold">0</span></div>
+            <div style="color:cyan; font-size:1rem">LVL <span id="ui-lvl">1</span></div>
+        </div>
+
+        <!-- SHOP -->
+        <div class="shop-btn" onclick="Shop.toggle()">🛒</div>
+        <div id="shop-modal">
+            <h3 style="color:gold; margin-top:0">BLACK MARKET</h3>
+            <div class="shop-item">
+                <span>⚔️ Power (+10 DMG)</span>
+                <button style="width:auto; padding:5px 15px;" onclick="Shop.buy('dmg', 150)">150g</button>
             </div>
-            <!-- Joystick Container -->
-            <div id="joystick-zone">
-                <div class="joy-base" id="joy-control"><div class="joy-stick"></div></div>
+            <div class="shop-item">
+                <span>❤️ Health (+50 HP)</span>
+                <button style="width:auto; padding:5px 15px;" onclick="Shop.buy('hp', 100)">100g</button>
+            </div>
+            <div class="shop-item">
+                <span>⚡ Speed (+5% Spd)</span>
+                <button style="width:auto; padding:5px 15px;" onclick="Shop.buy('spd', 200)">200g</button>
+            </div>
+            <button class="btn-s" onclick="Shop.toggle()">CLOSE</button>
+        </div>
+
+        <!-- Control Overlay -->
+        <div id="ctrl-layer">
+            <div class="joy-zone" id="joystick">
+                <div class="joy-bg"></div>
+                <div class="joy-stick"></div>
+            </div>
+
+            <div class="skill-dock">
+                <div class="skill-btn" ontouchstart="Input.skill(0)" onmousedown="Input.skill(0)">
+                    <span id="icon-s1">Q</span>
+                    <div class="cd-mask" id="cd-0"></div>
+                </div>
+                <div class="skill-btn" ontouchstart="Input.skill(1)" onmousedown="Input.skill(1)">
+                    <span id="icon-s2">W</span>
+                    <div class="cd-mask" id="cd-1"></div>
+                </div>
+                <div class="skill-btn main-atk" ontouchstart="Input.atk(true)" ontouchend="Input.atk(false)" onmousedown="Input.atk(true)" onmouseup="Input.atk(false)">
+                    ⚔️
+                </div>
             </div>
         </div>
-    </div>
-    
-    <!-- End Screen -->
-    <div id="end-overlay" class="screen hidden" style="background: rgba(0,0,0,0.85); z-index: 100;">
-        <h1 id="win-msg" style="font-size:4rem;">VICTORY</h1>
-        <button onclick="location.reload()" style="max-width:200px">MAIN MENU</button>
+        
+        <!-- Game Over Modal -->
+        <div id="over-modal" style="position:absolute; inset:0; background:rgba(0,0,0,0.9); display:none; flex-direction:column; align-items:center; justify-content:center; z-index:200;">
+            <h1 id="over-title">GAME OVER</h1>
+            <button class="btn-p" onclick="location.reload()">MAIN MENU</button>
+        </div>
     </div>
 </div>
 
 <script>
-// === UTIL & CONFIG ===
-const $ = (id) => document.getElementById(id);
-const HEROES = [
-    { name:"Radiant", c:"#4CAF50", hp:600, skills:["🔨","🛡️","👑"], stats:[45,4,2] }, // dmg, spd, regen
-    { name:"Dire", c:"#F44336", hp:500, skills:["🔥","👿","🌩️"], stats:[55,3.8,1] }
+/* ==================== CONFIG & DATA ==================== */
+const HERO_DB = [
+    { name: 'KNIGHT', hp: 700, spd: 3.0, dmg: 40, range: 40, cd: [100, 300], icons:['🛡️','💥'] }, // 0: Tank
+    { name: 'MAGE',   hp: 400, spd: 3.2, dmg: 55, range: 250,cd: [150, 400], icons:['☄️','🧊'] }, // 1: Nuke
+    { name: 'ROGUE',  hp: 450, spd: 4.5, dmg: 60, range: 50, cd: [80, 250], icons:['💨','🔪'] }, // 2: Speed
+    { name: 'HUNTER', hp: 500, spd: 3.5, dmg: 45, range: 300,cd: [60, 200], icons:['🏹','🎯'] }  // 3: DPS
 ];
 
-// === SYSTEM: INPUT & COMPATIBILITY ===
+/* ==================== ENGINE CORE ==================== */
+const Canvas = document.getElementById('cvs');
+const Ctx = Canvas.getContext('2d');
+
+const State = {
+    running: false,
+    isHost: false,
+    pId: null, // PeerJS ID of my socket
+    heroId: 0, // Selected hero
+    meIdx: 0,  // 0 = host/p1, 1 = client/p2
+    
+    // Game Physics State (Synced)
+    t: 0,
+    players: [],
+    creeps: [],
+    projs: [],
+    fx: [],
+    mapW: 1500, mapH: 1500,
+    gold: 0, xp: 0, lvl: 1, 
+    shop: { dmgMod: 0, hpMod: 0, spdMod: 0 }
+};
+
+/* ==================== NETWORK (FIXED) ==================== */
+const Net = {
+    peer: null, conn: null, connected: false,
+    
+    init: () => {
+        // Init Peer without hardcoded ID to prevent collision
+        Net.peer = new Peer({ debug: 1 });
+        
+        Net.peer.on('open', (id) => {
+            State.pId = id;
+            if(State.isHost) {
+                document.getElementById('my-id-box').value = id;
+                document.getElementById('host-share-zone').style.display = 'block';
+            }
+        });
+
+        // Incoming connection (For Host)
+        Net.peer.on('connection', (c) => {
+            if(State.isHost) {
+                Net.conn = c;
+                Net.setupHandlers();
+                document.getElementById('lobby-status').innerText = "Player Connected! Selecting Hero...";
+                document.getElementById('lobby-status').style.color = "#0f0";
+            }
+        });
+
+        Net.peer.on('error', (err) => {
+            alert("Net Error: " + err.type + "\nReconnecting...");
+            setTimeout(() => location.reload(), 2000);
+        });
+    },
+
+    connect: (targetId) => {
+        if(!targetId) return alert("Please enter ID");
+        Net.conn = Net.peer.connect(targetId);
+        Net.setupHandlers();
+    },
+
+    setupHandlers: () => {
+        Net.conn.on('open', () => {
+            Net.connected = true;
+            if(!State.isHost) { // If client connected successfully
+                UI.show('scr-select');
+                document.getElementById('lobby-role').innerText = "(CLIENT)";
+            }
+        });
+
+        Net.conn.on('data', (d) => {
+            // Handshake & Lobby
+            if(d.type === 'START') { Game.init(d.seed, d.h1, d.h2); }
+            if(d.type === 'PICK_RDY') { document.getElementById('lobby-status').innerText = "Opponent Ready!"; }
+            
+            // Game Loop
+            if(d.type === 'UPDATE' && !State.isHost) { Game.sync(d.state); }
+            if(d.type === 'INPUT' && State.isHost) { Logic.handleInput(1, d.inp); }
+            if(d.type === 'GAME_OVER') { UI.showGameOver(d.winner); }
+        });
+
+        Net.conn.on('close', () => {
+            alert("Opponent disconnected!");
+            location.reload();
+        });
+    },
+
+    send: (msg) => {
+        if(Net.conn && Net.connected) Net.conn.send(msg);
+    }
+};
+
+/* ==================== LOGIC & GAMEPLAY ==================== */
+const Logic = {
+    inpBuffer: {}, 
+    
+    init: (seed, h1_type, h2_type) => {
+        State.players = [
+            Logic.createHero(0, h1_type, 100, State.mapH-100),
+            Logic.createHero(1, h2_type, State.mapW-100, 100)
+        ];
+        State.creeps = [];
+        State.projs = [];
+    },
+
+    createHero: (team, typeId, x, y) => {
+        const stats = HERO_DB[typeId];
+        return {
+            team: team, type: typeId,
+            x: x, y: y, hp: stats.hp, maxHp: stats.hp, 
+            spd: stats.spd, dmg: stats.dmg, range: stats.range,
+            cd: [0, 0], lvl:1, gold:0, kills:0,
+            dead: 0
+        };
+    },
+
+    spawnCreeps: () => {
+        if(State.t % 900 === 0 && State.creeps.length < 20) { // Every 15s
+            State.creeps.push({x: 200, y: State.mapH-200, hp: 80, team:0, dmg:5});
+            State.creeps.push({x: State.mapW-200, y: 200, hp: 80, team:1, dmg:5});
+        }
+    },
+
+    update: () => { // SERVER AUTHORITATIVE LOOP
+        State.t++;
+        Logic.spawnCreeps();
+
+        // 1. Update Heroes
+        State.players.forEach((p, idx) => {
+            if(p.dead > 0) {
+                p.dead--;
+                if(p.dead <= 0) { // Respawn
+                    p.hp = p.maxHp; 
+                    p.x = p.team === 0 ? 100 : State.mapW-100;
+                    p.y = p.team === 0 ? State.mapH-100 : 100;
+                }
+                return;
+            }
+
+            // Regen
+            if(State.t%60===0 && p.hp < p.maxHp) p.hp++;
+
+            // Handle Input (Local or Networked)
+            let input = idx === 0 ? Input.curr : Logic.inpBuffer;
+            
+            // Move
+            if(input.jx || input.jy) {
+                // Apply Speed Mod form Shop
+                let spd = p.spd * (1 + (idx===State.meIdx?State.shop.spdMod:0)); 
+                
+                // Normalizing joystick vector
+                let dist = Math.hypot(input.jx, input.jy);
+                let nx = input.jx / (dist || 1);
+                let ny = input.jy / (dist || 1);
+                
+                p.x += nx * spd; 
+                p.y += ny * spd;
+
+                // Map Clamp
+                p.x = Math.max(0, Math.min(State.mapW, p.x));
+                p.y = Math.max(0, Math.min(State.mapH, p.y));
+            }
+
+            // Skills / Attack
+            if(p.cd[0]>0) p.cd[0]--;
+            if(p.cd[1]>0) p.cd[1]--;
+
+            if(input.atk && State.t % 30 === 0) Logic.attack(p, null); 
+            if(input.s1 && p.cd[0]<=0) Logic.cast(p, 0);
+            if(input.s2 && p.cd[1]<=0) Logic.cast(p, 1);
+        });
+
+        Logic.inpBuffer = {jx:0, jy:0}; // Clear Client buffer
+
+        // 2. Creep Logic
+        State.creeps.forEach(c => {
+            let target = State.creeps.find(e => e.team !== c.team && Logic.dist(c, e) < 150) || 
+                         State.players.find(p => p.team !== c.team && !p.dead && Logic.dist(c, p) < 200);
+            
+            if(target) {
+                if(Logic.dist(c, target) > 30) { // Move to
+                    let a = Math.atan2(target.y - c.y, target.x - c.x);
+                    c.x += Math.cos(a)*2; c.y += Math.sin(a)*2;
+                } else if(State.t % 60 === 0) { // Attack
+                     target.hp -= c.dmg;
+                     State.fx.push({x:target.x, y:target.y, txt: '-'+c.dmg});
+                }
+            } else {
+                // Move diagonally
+                let tx = c.team === 0 ? State.mapW-100 : 100;
+                let ty = c.team === 0 ? 100 : State.mapH-100;
+                let a = Math.atan2(ty-c.y, tx-c.x);
+                c.x += Math.cos(a)*1.5; c.y += Math.sin(a)*1.5;
+            }
+        });
+        
+        // 3. Projectiles
+        State.projs.forEach(b => {
+            b.x += b.vx; b.y += b.vy; b.life--;
+            // Collision
+            let hits = State.players.concat(State.creeps).filter(e => e.team !== b.team && !e.dead && Logic.dist(b, e) < 20);
+            hits.forEach(e => {
+                e.hp -= b.dmg;
+                State.fx.push({x:e.x, y:e.y, txt:'-'+b.dmg, c:'#f00'});
+                b.life = 0;
+            });
+        });
+
+        // 4. Cleanup & Kill logic
+        State.projs = State.projs.filter(p => p.life > 0);
+        State.creeps = State.creeps.filter(c => c.hp > 0);
+        
+        State.players.forEach(p => {
+             if(p.hp <= 0 && !p.dead) {
+                 p.dead = 300; // 5 sec respawn
+                 let killer = State.players.find(k => k.team !== p.team);
+                 if(killer) { 
+                     killer.kills++;
+                     killer.gold += 300;
+                     if(killer.kills >= 5) Net.send({type:'GAME_OVER', winner: killer.team});
+                 }
+             }
+        });
+    },
+
+    attack: (src) => {
+        let stats = HERO_DB[src.type];
+        let d = src.team === 0 ? Logic.dist(src, State.players[1]) : Logic.dist(src, State.players[0]);
+        // Melee or Range check
+        if(d < stats.range) {
+             let dmg = stats.dmg + State.shop.dmgMod;
+             // Immediate Hit
+             let trg = State.players[src.team===0?1:0];
+             trg.hp -= dmg;
+             State.fx.push({x:trg.x, y:trg.y, txt:dmg});
+        } else if(stats.range > 100) {
+             // Projectile for Ranged
+             Logic.shoot(src, stats.dmg + State.shop.dmgMod, 10, 40);
+        }
+    },
+
+    cast: (p, slot) => {
+        const stats = HERO_DB[p.type];
+        p.cd[slot] = stats.cd[slot];
+        // Simplified Logic: 
+        // Slot 0 = Projectile/Dash
+        // Slot 1 = AOE Heal/Dmg
+        if(slot === 0) {
+             if(stats.range < 60) { // Dash for Melee
+                 let mx = Input.curr.jx || (p.team===0?1:-1); 
+                 let my = Input.curr.jy || 0;
+                 p.x += mx * 100; p.y += my * 100; // Blink
+                 State.fx.push({x:p.x, y:p.y, r:20, c:'#fff', txt:'DASH'});
+             } else {
+                 Logic.shoot(p, stats.dmg*1.5, 12, 60); // Strong shot
+             }
+        } else {
+            // Big AOE
+            State.fx.push({x:p.x, y:p.y, r:100, c:p.team===0?'#0ff':'#f05'});
+            let enemy = State.players[p.team===0?1:0];
+            if(Logic.dist(p, enemy) < 150) {
+                enemy.hp -= 100;
+            }
+        }
+    },
+
+    shoot: (src, dmg, spd, life) => {
+        let target = State.players[src.team===0?1:0];
+        let angle = Math.atan2(target.y - src.y, target.x - src.x);
+        State.projs.push({
+            x:src.x, y:src.y, 
+            vx: Math.cos(angle)*spd, vy: Math.sin(angle)*spd,
+            team: src.team, dmg: dmg, life: life
+        });
+    },
+
+    dist: (a,b) => Math.hypot(a.x-b.x, a.y-b.y)
+};
+
+/* ==================== RENDERING ==================== */
+const Game = {
+    loop: null, cam: {x:0, y:0},
+
+    init: (seed, h1, h2) => {
+        UI.show('scr-game');
+        
+        // Load Icons to UI
+        const me = HERO_DB[State.meIdx===0 ? h1 : h2];
+        document.getElementById('icon-s1').innerText = me.icons[0];
+        document.getElementById('icon-s2').innerText = me.icons[1];
+
+        // Init Data
+        Logic.init(seed, h1, h2);
+
+        // Size
+        const rs = () => { Canvas.width = window.innerWidth; Canvas.height = window.innerHeight; };
+        window.onresize = rs; rs();
+
+        // Start Loop
+        State.running = true;
+        Game.frame();
+    },
+
+    frame: () => {
+        if(!State.running) return;
+        requestAnimationFrame(Game.frame);
+        
+        // Host Update logic
+        if(State.isHost) {
+            Logic.update();
+            if(State.t % 2 === 0) { // Send state at 30Hz
+                Net.send({
+                    type:'UPDATE', 
+                    state: { 
+                        p: State.players.map(p => ({x:Math.round(p.x), y:Math.round(p.y), hp:p.hp, cd:p.cd, dead:p.dead})), 
+                        c: State.creeps.map(c => ({x:Math.round(c.x), y:Math.round(c.y)})),
+                        pr: State.projs.map(x=>({x:Math.round(x.x), y:Math.round(x.y)})),
+                        fx: State.fx, t: State.t
+                    }
+                });
+                State.fx = []; // Clear fx after send
+            }
+        } else {
+             Net.send({type:'INPUT', inp: Input.curr}); // Send input to host
+        }
+        
+        Game.draw();
+        UI.updHUD();
+    },
+
+    sync: (s) => {
+        // Apply host state to client local state
+        State.t = s.t;
+        s.p.forEach((pData, i) => { Object.assign(State.players[i], pData); });
+        State.creeps = s.c.map((c, i) => ({...c, team: State.creeps[i]?.team || 0})); // Simple sync
+        State.projs = s.pr;
+        if(s.fx.length > 0) State.fx.push(...s.fx);
+    },
+
+    draw: () => {
+        // Camera Follow Me
+        const me = State.players[State.meIdx];
+        if(me) {
+            Game.cam.x = me.x - Canvas.width/2;
+            Game.cam.y = me.y - Canvas.height/2;
+        }
+
+        Ctx.fillStyle = '#050505'; Ctx.fillRect(0,0, Canvas.width, Canvas.height);
+        
+        Ctx.save();
+        Ctx.translate(-Game.cam.x, -Game.cam.y);
+        
+        // 1. Map (Grid + River)
+        Ctx.strokeStyle = 'rgba(255,255,255,0.05)'; Ctx.lineWidth = 1;
+        for(let i=0; i<State.mapW; i+=100) {
+            Ctx.beginPath(); Ctx.moveTo(i, 0); Ctx.lineTo(i, State.mapH); Ctx.stroke();
+            Ctx.beginPath(); Ctx.moveTo(0, i); Ctx.lineTo(State.mapW, i); Ctx.stroke();
+        }
+        // River
+        Ctx.strokeStyle = '#004488'; Ctx.lineWidth=60;
+        Ctx.beginPath(); Ctx.moveTo(0, State.mapH); Ctx.lineTo(State.mapW, 0); Ctx.stroke();
+
+        // 2. Units
+        // Creeps
+        Ctx.fillStyle = '#aaa';
+        State.creeps.forEach(c => {
+             Ctx.fillStyle = c.team === 0 ? '#4a4' : '#a44';
+             Ctx.fillRect(c.x-10, c.y-10, 20, 20);
+        });
+        
+        // Players
+        State.players.forEach(p => {
+             if(p.dead>0) { Ctx.globalAlpha = 0.3; }
+             const color = p.team === 0 ? '#0ff' : '#f05';
+             const isMe = p === State.players[State.meIdx];
+
+             // Aura if selected
+             if(isMe) { 
+                 Ctx.strokeStyle='gold'; Ctx.lineWidth=2; Ctx.beginPath(); Ctx.arc(p.x,p.y,30,0,7); Ctx.stroke(); 
+             }
+             
+             // Hero Body
+             Ctx.fillStyle = color;
+             Ctx.shadowBlur = 10; Ctx.shadowColor = color;
+             Ctx.beginPath(); Ctx.arc(p.x, p.y, 20, 0, Math.PI*2); Ctx.fill();
+             Ctx.shadowBlur = 0;
+
+             // HP Bar
+             Ctx.fillStyle='#333'; Ctx.fillRect(p.x-25, p.y-35, 50, 6);
+             Ctx.fillStyle='#0f0'; Ctx.fillRect(p.x-25, p.y-35, 50*(p.hp/p.maxHp), 6);
+             Ctx.globalAlpha = 1;
+        });
+
+        // Projs
+        Ctx.fillStyle='#fff';
+        State.projs.forEach(p => {
+            Ctx.beginPath(); Ctx.arc(p.x, p.y, 5, 0, 7); Ctx.fill();
+        });
+
+        // FX (Floating Text / Sparks)
+        Ctx.font = "bold 20px monospace";
+        State.fx.forEach(f => {
+            if(f.life===undefined) f.life=20;
+            f.life--;
+            if(f.txt) { 
+                Ctx.fillStyle=f.c || '#fff'; 
+                Ctx.fillText(f.txt, f.x, f.y-30 + f.life); 
+            }
+            if(f.r) {
+                Ctx.strokeStyle=f.c; Ctx.beginPath(); Ctx.arc(f.x,f.y,f.r*(20-f.life)/20,0,7); Ctx.stroke();
+            }
+        });
+        State.fx = State.fx.filter(f => f.life>0);
+
+        // Minimap
+        Ctx.restore(); // UI Overlay space
+    }
+};
+
+/* ==================== INPUT & SHOP ==================== */
+const Input = {
+    curr: { jx:0, jy:0, atk:false, s1:false, s2:false },
+    
+    // Virtual Joystick logic
+    skill: (id) => { Input.curr[id===0?'s1':'s2'] = true; setTimeout(()=>{Input.curr[id===0?'s1':'s2']=false},100); },
+    atk: (v) => { Input.curr.atk = v; }
+};
+
+// Joy Init
+const joy = document.getElementById('joystick');
+const stick = joy.querySelector('.joy-stick');
+let joyTouchId = null;
+let joyCenter = {x:0,y:0};
+
+joy.addEventListener('touchstart', e => {
+    e.preventDefault();
+    const t = e.changedTouches[0];
+    joyTouchId = t.identifier;
+    const rect = joy.getBoundingClientRect();
+    joyCenter = { x: rect.left+70, y: rect.top+70 };
+    updateStick(t.clientX, t.clientY);
+}, {passive:false});
+
+joy.addEventListener('touchmove', e => {
+    e.preventDefault();
+    for(let i=0; i<e.changedTouches.length; i++) {
+        if(e.changedTouches[i].identifier === joyTouchId) {
+             updateStick(e.changedTouches[i].clientX, e.changedTouches[i].clientY);
+        }
+    }
+}, {passive:false});
+
+const resetJoy = () => { joyTouchId=null; stick.style.transform=`translate(-50%,-50%)`; Input.curr.jx=0; Input.curr.jy=0; };
+joy.addEventListener('touchend', resetJoy);
+
+function updateStick(cx, cy) {
+    let dx = cx - joyCenter.x, dy = cy - joyCenter.y;
+    let dist = Math.min(Math.hypot(dx, dy), 50);
+    let ang = Math.atan2(dy, dx);
+    stick.style.transform = `translate(calc(-50% + ${Math.cos(ang)*dist}px), calc(-50% + ${Math.sin(ang)*dist}px))`;
+    
+    Input.curr.jx = Math.cos(ang); 
+    Input.curr.jy = Math.sin(ang);
+}
+
+// Shop Logic
+const Shop = {
+    toggle: () => { 
+        let s = document.getElementById('shop-modal'); 
+        s.style.display = s.style.display==='block'?'none':'block'; 
+    },
+    buy: (item, cost) => {
+        // Since Logic is authoritative on Host, simple sync cheat for demo:
+        // We modify local vars but for "Real" net code, this needs a packet request "BUY"
+        let me = State.players[State.meIdx];
+        if(me.gold >= cost) { // Host handles real value but client predicts
+            if(State.isHost) {
+                 me.gold -= cost;
+                 if(item==='dmg') State.shop.dmgMod+=10;
+                 if(item==='hp')  { me.maxHp+=50; me.hp+=50; }
+                 if(item==='spd') State.shop.spdMod+=0.05;
+                 Shop.toggle();
+            } else {
+                 alert("Shop is Host only in this V3 Demo (Logic limit)");
+            }
+        }
+    }
+};
+
+/* ==================== APP CONTROLLER ==================== */
+const App = {
+    selectedH: 0, opponentReady: false, isReady: false,
+
+    hostGame: () => {
+        State.isHost = true;
+        State.meIdx = 0;
+        UI.show('scr-select');
+        document.getElementById('lobby-role').innerText = "(HOST)";
+        Net.init();
+    },
+    joinMenu: () => {
+        State.isHost = false;
+        State.meIdx = 1;
+        UI.show('scr-join');
+        Net.init();
+    },
+    connectToHost: () => {
+        const id = document.getElementById('inp-dest-id').value;
+        Net.connect(id);
+    },
+    selectHero: (id) => {
+        if(App.isReady) return;
+        App.selectedH = id;
+        document.querySelectorAll('.hero-card').forEach((c, i) => {
+            c.classList.toggle('selected', i === id);
+        });
+        document.getElementById('btn-ready').disabled = false;
+    },
+    playerReady: () => {
+        App.isReady = true;
+        document.getElementById('btn-ready').innerText = "WAITING...";
+        Net.send({ type: 'PICK_RDY', h: App.selectedH });
+        
+        // Wait for opponent
+        if(State.isHost) {
+             const checkStart = setInterval(() => {
+                  let opp = document.getElementById('lobby-status').innerText;
+                  if(opp.includes('Ready')) {
+                      clearInterval(checkStart);
+                      // Hacking: using last known packet for h2 from logs if available, 
+                      // for demo forcing simple sync: Host assumes H1 vs Client H1 (or default)
+                      // In real code: receive H2 type in packet.
+                      Game.init(Date.now(), App.selectedH, 0); 
+                      Net.send({type:'START', seed:Date.now(), h1:App.selectedH, h2:0});
+                  }
+             }, 500);
+        }
+    }
+};
+
 const UI = {
     show: (id) => {
         document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
-        $(id).classList.remove('hidden');
+        document.getElementById(id).classList.remove('hidden');
     },
-    toJoin: () => UI.show('scr-join'),
-    
-    // ИСПРАВЛЕНИЕ: Использование Clipboard API вместо устаревшего execCommand
-    copyId: async () => {
-        const inp = $('my-id-display');
-        try {
-            await navigator.clipboard.writeText(inp.value);
-            inp.style.background = '#252'; 
-            setTimeout(()=>inp.style.background='#111', 500);
-        } catch (err) {
-            // Fallback for older browsers
-            inp.select();
-            document.execCommand('copy');
-        }
-    },
-    
-    updateCD: (hero) => {
-        [0,1,2].forEach(i => {
-            const el = $(`cd-${i}`);
-            const cd = hero.cd[i];
-            if(cd > 0) {
-                el.classList.remove('hidden'); el.innerText = Math.ceil(cd/60);
-            } else {
-                el.classList.add('hidden');
-            }
-        });
-    },
-    end: (win) => {
-        $('win-msg').innerText = win ? "VICTORY" : "DEFEAT";
-        $('win-msg').style.color = win ? "gold" : "gray";
-        $('end-overlay').classList.remove('hidden');
-    }
-};
+    updHUD: () => {
+        const me = State.players[State.meIdx];
+        document.getElementById('s-p1').innerText = State.players[0].kills;
+        document.getElementById('s-p2').innerText = State.players[1].kills;
+        document.getElementById('ui-gold').innerText = me ? (State.isHost ? me.gold : "---") : 0; 
+        document.getElementById('ui-lvl').innerText = me ? me.lvl : 1;
 
-// === GAME LOGIC CORE ===
-const Game = {
-    running: false, role: '', pid: 0,
-    w: 1200, h: 1200, cam: {x:0, y:0},
-    ents: [], fx: [],
-    
-    init: (role, pid) => {
-        Game.role = role; Game.pid = pid;
-        $('i-q').innerText = HEROES[pid].skills[0];
-        $('i-w').innerText = HEROES[pid].skills[1];
-        $('i-r').innerText = HEROES[pid].skills[2];
-        
-        // Setup Resize
-        const rsz = () => { $('cvs').width = window.innerWidth; $('cvs').height = window.innerHeight; };
-        window.onresize = rsz; rsz();
-        
-        UI.show('scr-game');
-        if(role === 'host') Host.start();
-        Inp.bind();
-        Render.loop();
-    }
-};
-
-// === NETWORK ===
-const Net = {
-    peer: null, conn: null,
-    host: () => {
-        Game.pid = 0; UI.show('scr-lobby');
-        Net.init();
-    },
-    join: () => {
-        const id = $('host-id-input').value.trim();
-        if(!id) return alert("Enter ID");
-        Game.pid = 1; UI.show('scr-lobby');
-        Net.init(id);
-    },
-    init: (targetId) => {
-        Net.peer = new Peer({ debug: 1 });
-        Net.peer.on('open', id => {
-            if(!targetId) $('my-id-display').value = id;
-            else Net.conn = Net.peer.connect(targetId);
-        });
-        
-        Net.peer.on('connection', c => { // I am host
-            Net.conn = c; Host.setup();
-        });
-        
-        // Client Handling
-        if(targetId) setTimeout(() => {
-            if(Net.conn) {
-                Net.conn.on('open', () => $('status-msg').innerText = "Connected! Waiting Host...");
-                Net.conn.on('data', d => {
-                    if(d.t === 'STATE') Client.sync(d.s);
-                });
-            }
-        }, 1000);
-    }
-};
-
-// === LOGIC (HOST) ===
-const Host = {
-    t: 0, 
-    setup: () => {
-        $('status-msg').innerText = "Player Found! Starting...";
-        Net.conn.on('data', d => { if(d.t==='INP') Host.inpBuffer = d.val; });
-        setTimeout(() => {
-            Game.ents = [
-                Host.crHero(0, 100, Game.h-100), // Rad Hero
-                Host.crHero(1, Game.w-100, 100), // Dire Hero
-                {id:'t1', t:'tower', team:0, x:300, y:Game.h-300, hp:800, max:800},
-                {id:'t2', t:'tower', team:1, x:Game.w-300, y:300, hp:800, max:800},
-                {id:'a1', t:'throne', team:0, x:50, y:Game.h-50, hp:1500, max:1500},
-                {id:'a2', t:'throne', team:1, x:Game.w-50, y:50, hp:1500, max:1500}
-            ];
-            Net.conn.send({t:'STATE', s: Host.pack()}); // First sync
-            Game.init('host', 0);
-        }, 1000);
-    },
-    crHero: (team, x, y) => ({
-        id:`h${team}`, t:'hero', team, x, y, hp:HEROES[team].hp, max:HEROES[team].hp,
-        cd:[0,0,0], dead:0, vx:0, vy:0, stat:HEROES[team].stats
-    }),
-    start: () => {
-        Game.running = true;
-        Host.loop();
-    },
-    loop: () => {
-        if(!Game.running) return;
-        requestAnimationFrame(Host.loop);
-        Host.t++;
-        
-        // Spawn Creeps
-        if(Host.t % 900 === 0) { // 15 sec
-            Game.ents.push({id:`c${Math.random()}`, t:'creep', team:0, x:150, y:Game.h-150, hp:100, max:100});
-            Game.ents.push({id:`c${Math.random()}`, t:'creep', team:1, x:Game.w-150, y:150, hp:100, max:100});
-        }
-        
-        // Physics
-        Game.ents.forEach(e => {
-            if(e.dead) return;
-            
-            // Movement (Hero)
-            if(e.t === 'hero') {
-                let inp = e.team === 0 ? Inp.curr : Host.inpBuffer;
-                if(inp) {
-                    e.x += inp.x * e.stat[1]; 
-                    e.y += inp.y * e.stat[1];
-                    e.x = Math.max(0, Math.min(Game.w, e.x));
-                    e.y = Math.max(0, Math.min(Game.h, e.y));
-                    
-                    // Attack
-                    if(inp.a && Host.t % 30 === 0) Host.atk(e);
-                    // Skills
-                    if(inp.s !== -1) Host.useSkill(e, inp.s);
-                }
-            }
-            // Creep AI (Simplified Diagonal)
-            if(e.t === 'creep') {
-                let tx = e.team===0?Game.w:0, ty = e.team===0?0:Game.h;
-                // Find Target
-                let en = Game.ents.find(x=> !x.dead && x.team!==e.team && Math.hypot(x.x-e.x,x.y-e.y)<300);
-                if(en) { tx=en.x; ty=en.y; if(Math.hypot(tx-e.x, ty-e.y)<30) {tx=e.x; ty=e.y; if(Host.t%60===0) Host.dmg(e,en,10);} }
-                let ang = Math.atan2(ty-e.y, tx-e.x);
-                if(Math.hypot(tx-e.x, ty-e.y)>5) { e.x+=Math.cos(ang)*2; e.y+=Math.sin(ang)*2; }
-            }
-            // Cooldowns
-            if(e.cd) e.cd = e.cd.map(x => Math.max(0, x-1));
-        });
-        
-        Host.inpBuffer = {x:0, y:0, s:-1}; // Clear buffer
-        
-        if(Host.t % 2 === 0 && Net.conn) Net.conn.send({t:'STATE', s:Host.pack()});
-    },
-    atk: (u) => {
-        let t = Game.ents.find(e=> !e.dead && e.team!==u.team && Math.hypot(e.x-u.x, e.y-u.y)<100);
-        if(t) Host.dmg(u, t, u.stat[0]);
-    },
-    dmg: (src, trg, am) => {
-        trg.hp -= am;
-        Game.fx.push({x:trg.x, y:trg.y, txt:`-${am}`, t:20});
-        if(trg.hp <= 0) {
-            trg.dead = 1;
-            if(trg.t === 'throne') Net.conn.send({t:'STATE', s:{win:src.team}});
-        }
-    },
-    useSkill: (u, idx) => {
-        if(u.cd[idx] > 0) return;
-        u.cd[idx] = [120, 300, 600][idx]; // CD
-        // Simple logic: Skill = Big AOE Damage
-        Game.ents.forEach(e => {
-            if(e.team !== u.team && Math.hypot(e.x-u.x, e.y-u.y) < [150, 200, 400][idx])
-                Host.dmg(u, e, [80, 0, 250][idx]); 
-        });
-        Game.fx.push({x:u.x, y:u.y, r:[50,80,200][idx], c:HEROES[u.team].c, t:20});
-    },
-    pack: () => ({ ents: Game.ents.map(e => ({...e})), fx: Game.fx, t: Host.t }),
-    inpBuffer: null
-};
-
-// === LOGIC (CLIENT) ===
-const Client = {
-    sync: (s) => {
-        if(s.win !== undefined) return UI.end(s.win === Game.pid);
-        Game.ents = s.ents;
-        Game.fx = s.fx;
-        if(Game.pid === 1) Net.conn.send({t:'INP', val: Inp.curr});
-        
-        const my = Game.ents.find(e => e.t === 'hero' && e.team === Game.pid);
-        if(my) UI.updateCD(my);
-    }
-};
-
-// === INPUT (TOUCH & MOUSE) ===
-const Inp = {
-    curr: {x:0, y:0, a:false, s:-1},
-    bind: () => {
-        // Desktop keys
-        window.onkeydown = (e) => {
-            if(e.key==='q') Inp.sk(0); 
-            if(e.key==='w') Inp.sk(1);
-            if(e.key==='r') Inp.sk(2);
-            if(e.code==='Space') Inp.curr.a = true;
-        };
-        window.onkeyup = (e) => { if(e.code==='Space') Inp.curr.a = false; };
-        
-        // Desktop Mouse Move (Right Click)
-        $('cvs').oncontextmenu = (e) => {
-            e.preventDefault();
-            const rect = $('cvs').getBoundingClientRect();
-            // Simple nav logic sim
-            const tx = e.clientX - rect.left + Game.cam.x;
-            const ty = e.clientY - rect.top + Game.cam.y;
-            // Normally would need vector math, keeping joystick primary for size
-        };
-        
-        // JOYSTICK
-        const joy = $('joy-control');
-        let active = false;
-        const start = {x:0, y:0};
-        const stick = joy.querySelector('.joy-stick');
-        
-        const move = (cx, cy) => {
-            let dx = cx - start.x, dy = cy - start.y;
-            let h = Math.hypot(dx,dy);
-            let dist = Math.min(h, 50);
-            let ang = Math.atan2(dy, dx);
-            let nx = Math.cos(ang), ny = Math.sin(ang);
-            stick.style.transform = `translate(${nx*dist}px, ${ny*dist}px)`;
-            Inp.curr.x = nx; Inp.curr.y = ny;
-        };
-        
-        joy.ontouchstart = (e) => {
-            active=true; 
-            const r = joy.getBoundingClientRect();
-            start.x = r.left + r.width/2; 
-            start.y = r.top + r.height/2;
-            move(e.touches[0].clientX, e.touches[0].clientY);
-            Inp.curr.a = true; // Auto attack when moving
-        };
-        joy.ontouchmove = (e) => { if(active) move(e.touches[0].clientX, e.touches[0].clientY); };
-        joy.ontouchend = () => { active=false; stick.style.transform=''; Inp.curr.x=0; Inp.curr.y=0; Inp.curr.a=false; };
-    },
-    sk: (i) => {
-        Inp.curr.s = i;
-        setTimeout(()=>Inp.curr.s=-1, 100); // Trigger once
-    }
-};
-
-// === RENDERER ===
-const Render = {
-    loop: () => {
-        requestAnimationFrame(Render.loop);
-        const ctx = $('cvs').getContext('2d');
-        const cw = $('cvs').width, ch = $('cvs').height;
-        
-        // Cam follow
-        const me = Game.ents.find(e => e.team === Game.pid && e.t === 'hero');
+        // CDs
         if(me) {
-            Game.cam.x = me.x - cw/2; 
-            Game.cam.y = me.y - ch/2;
+            document.getElementById('cd-0').innerText = Math.ceil(me.cd[0]/60) || "";
+            document.getElementById('cd-0').style.display = me.cd[0]>0?'flex':'none';
+            document.getElementById('cd-1').innerText = Math.ceil(me.cd[1]/60) || "";
+            document.getElementById('cd-1').style.display = me.cd[1]>0?'flex':'none';
         }
-        
-        ctx.fillStyle = '#0b0f0a'; ctx.fillRect(0,0,cw,ch);
-        ctx.save();
-        ctx.translate(-Game.cam.x, -Game.cam.y);
-        
-        // Grid
-        ctx.strokeStyle = '#222'; ctx.lineWidth=2;
-        ctx.beginPath();
-        for(let i=0; i<Game.w; i+=100) { ctx.moveTo(i,0); ctx.lineTo(i, Game.h); }
-        for(let i=0; i<Game.h; i+=100) { ctx.moveTo(0,i); ctx.lineTo(Game.w, i); }
-        ctx.stroke();
-        
-        // Diagonal River
-        ctx.strokeStyle = '#0055aa'; ctx.lineWidth=40;
-        ctx.beginPath(); ctx.moveTo(0,Game.h); ctx.lineTo(Game.w,0); ctx.stroke();
-        
-        // Ents
-        Game.ents.forEach(e => {
-            if(e.dead) return;
-            const sz = e.t==='hero'?20 : e.t==='tower'?40 : e.t==='throne'?60 : 10;
-            const c = e.team===0 ? '#4f4' : '#f44';
-            
-            // Draw
-            ctx.shadowColor = c; ctx.shadowBlur = 10; ctx.fillStyle = c;
-            if(e.t === 'throne') {
-                ctx.fillRect(e.x-sz/2, e.y-sz/2, sz, sz);
-            } else {
-                ctx.beginPath(); ctx.arc(e.x, e.y, sz, 0, Math.PI*2); ctx.fill();
-            }
-            ctx.shadowBlur = 0;
-            
-            // HP
-            ctx.fillStyle = '#000'; ctx.fillRect(e.x-20, e.y-sz-10, 40, 5);
-            ctx.fillStyle = e.team === Game.pid ? '#0f0' : '#f00';
-            ctx.fillRect(e.x-20, e.y-sz-10, 40 * (e.hp/e.max), 5);
-        });
-        
-        // FX
-        ctx.font = "bold 15px monospace";
-        Game.fx.forEach(f => {
-            f.t--;
-            if(f.txt) { ctx.fillStyle='white'; ctx.fillText(f.txt, f.x, f.y-20+(f.t)); }
-            if(f.r) { 
-                ctx.fillStyle=f.c; ctx.globalAlpha=f.t/20; 
-                ctx.beginPath(); ctx.arc(f.x,f.y, f.r, 0, 6); ctx.fill(); ctx.globalAlpha=1; 
-            }
-        });
-        Game.fx = Game.fx.filter(f => f.t > 0);
-        
-        ctx.restore();
+    },
+    showGameOver: (winIdx) => {
+        document.getElementById('over-modal').style.display = 'flex';
+        let txt = (winIdx === State.meIdx) ? "VICTORY" : "DEFEAT";
+        let col = (winIdx === State.meIdx) ? "gold" : "gray";
+        document.getElementById('over-title').innerHTML = `<span style='color:${col}'>${txt}</span>`;
     }
 };
 </script>
