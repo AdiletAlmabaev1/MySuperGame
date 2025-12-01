@@ -2,211 +2,420 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simple PvP</title>
+    <title>Anime Network FPS</title>
+    <!-- Подключаем библиотеки -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <style>
-        body { margin: 0; overflow: hidden; background: #222; color: white; font-family: monospace; }
-        canvas { display: block; }
-        #ui { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.8); padding: 10px; border-radius: 8px; }
-        input { background: #333; border: 1px solid #555; color: white; padding: 5px; }
-        button { cursor: pointer; padding: 5px 10px; background: #444; color: #fff; border: 1px solid #666; }
-        button:hover { background: #666; }
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', Tahoma, sans-serif; }
+        
+        /* Меню подключения */
+        #menu {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(30, 20, 40, 0.95);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            color: white; z-index: 100;
+        }
+        .box { background: rgba(255, 255, 255, 0.1); padding: 30px; border-radius: 15px; text-align: center; border: 2px solid #ff0055; box-shadow: 0 0 20px #ff0055; }
+        input { font-size: 18px; padding: 10px; width: 250px; margin: 10px; text-align: center; }
+        button { font-size: 18px; padding: 10px 30px; background: #ff0055; color: white; border: none; cursor: pointer; transition: 0.2s; }
+        button:hover { background: white; color: #ff0055; }
+        
+        /* UI в игре */
+        #ui { position: absolute; top: 20px; left: 20px; z-index: 10; display: none; pointer-events: none; }
+        .hp-bar-bg { width: 300px; height: 30px; background: rgba(0,0,0,0.6); border: 2px solid white; transform: skewX(-20deg); overflow: hidden; }
+        #hp-bar-fill { width: 100%; height: 100%; background: linear-gradient(90deg, #ff9900, #ff0055); transition: width 0.2s; }
+        #weapon-info { margin-top: 10px; color: yellow; font-weight: bold; font-size: 24px; text-shadow: 2px 2px black; }
+
+        /* Прицел */
+        #crosshair {
+            position: absolute; top: 50%; left: 50%; width: 10px; height: 10px;
+            background: white; border-radius: 50%; transform: translate(-50%, -50%);
+            z-index: 9; border: 2px solid black; pointer-events: none; display: none;
+        }
+
+        #log { position: absolute; bottom: 10px; left: 10px; color: #aaa; font-size: 12px; z-index: 200; }
     </style>
 </head>
 <body>
 
-<!-- Интерфейс -->
-<div id="ui">
-    <div id="status">Статус: Ожидание...</div>
-    <div style="margin-top: 10px;">
-        <p>Ваш ID: <input id="my-id" readonly onclick="this.select()"></p>
-        <p>ID друга: <input id="friend-id"></p>
-        <button onclick="Net.connect()">Подключиться</button>
+<div id="menu">
+    <div class="box">
+        <h1 style="margin: 0 0 20px 0; color: #ff0055; font-style: italic;">ANIME PVP ONLINE</h1>
+        <p>Ваш ID (отправьте другу):</p>
+        <input type="text" id="my-id" readonly onclick="this.select()" value="Подключение...">
+        <p>ID Друга:</p>
+        <input type="text" id="friend-id" placeholder="Вставьте ID сюда">
+        <br><br>
+        <button onclick="Net.connectToPeer()">CONNECT & PLAY</button>
     </div>
-    <p style="font-size: 0.8em; color: #aaa;">Управление: WASD + Клик</p>
 </div>
 
-<canvas id="game"></canvas>
+<div id="ui">
+    <div class="hp-bar-bg"><div id="hp-bar-fill"></div></div>
+    <div id="weapon-info">WEAPON: BLASTER (E to switch)</div>
+</div>
+<div id="crosshair"></div>
+<div id="log">Ожидание...</div>
 
 <script>
-// === 1. НАСТРОЙКИ И СОСТОЯНИЕ ===
-const cvs = document.getElementById('game');
-const ctx = cvs.getContext('2d');
-cvs.width = window.innerWidth; cvs.height = window.innerHeight;
+    // --- НАСТРОЙКИ ---
+    const CONF = {
+        speed: 15,
+        jump: 25,
+        mouseSens: 0.002,
+        gravity: 50
+    };
 
-// Состояние игры
-const Game = {
-    me:  { x: 100, y: 100, hp: 100, color: '#00f3ff' }, // Я (Синий)
-    opp: { x: 300, y: 100, hp: 100, color: '#ff0055' }, // Враг (Красный)
-    bullets: [], // Пули {x, y, vx, vy, owner}
-    keys: {},    // Нажатые кнопки
-    mouse: { x:0, y:0, down: false }
-};
+    const WEAPONS = [
+        { name: "PLASMA GUN", color: 0x00ffff, speed: 60, rate: 300, size: 0.3 },
+        { name: "HEAVY CANNON", color: 0xff0000, speed: 40, rate: 800, size: 0.8 }
+    ];
 
-// === 2. СЕТЬ (PEERJS) ===
-const Net = {
-    peer: new Peer(),
-    conn: null,
-    isHost: false,
+    // --- ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ---
+    let camera, scene, renderer;
+    let myPlayer = { 
+        x: 0, y: 5, z: 0, 
+        yaw: 0, pitch: 0, 
+        vy: 0, onGround: false,
+        hp: 100,
+        wepIndex: 0
+    };
+    let remotePlayer = { mesh: null, hp: 100, targetX:0, targetZ:0, targetY:0 }; // Враг
+    let bullets = [];
+    let inputs = { w: false, a: false, s: false, d: false, space: false };
+    let clock = new THREE.Clock();
+    let isGameRunning = false;
+    let lastShootTime = 0;
 
-    init: () => {
-        // При получении своего ID
-        Net.peer.on('open', id => {
-            document.getElementById('my-id').value = id;
-            document.getElementById('status').innerText = "Готов. Скопируй свой ID или вставь ID друга.";
+    // --- 1. СЕТЕВАЯ ЧАСТЬ (PeerJS) ---
+    const Net = {
+        peer: null,
+        conn: null,
+
+        init: () => {
+            Net.peer = new Peer(); 
+
+            Net.peer.on('open', (id) => {
+                document.getElementById('my-id').value = id;
+                log("Сеть готова. Ждем подключения...");
+            });
+
+            Net.peer.on('connection', (c) => {
+                if(Net.conn) return; // Уже играем
+                Net.conn = c;
+                Net.setupConnection();
+                startGame();
+            });
+        },
+
+        connectToPeer: () => {
+            const friendId = document.getElementById('friend-id').value;
+            if(!friendId) return alert("Введите ID друга!");
+            Net.conn = Net.peer.connect(friendId);
+            Net.conn.on('open', () => {
+                Net.setupConnection();
+                startGame();
+            });
+        },
+
+        setupConnection: () => {
+            log("Подключено! Игра начинается!");
+            // Обработка входящих данных
+            Net.conn.on('data', (data) => {
+                if (data.type === 'update') {
+                    // Обновляем позицию врага
+                    if(remotePlayer.mesh) {
+                        remotePlayer.targetX = data.x;
+                        remotePlayer.targetY = data.y;
+                        remotePlayer.targetZ = data.z;
+                        remotePlayer.mesh.rotation.y = data.yaw;
+                        
+                        // Аниме интерполяция (плавность) будет в update()
+                    }
+                } 
+                else if (data.type === 'shoot') {
+                    // Враг выстрелил
+                    spawnBullet(data.pos, data.dir, data.wepInfo, false);
+                }
+                else if (data.type === 'hit') {
+                    // В меня попали! Я (жертва) подтверждаю урон.
+                    // Для честности в P2P обычно доверяют стреляющему,
+                    // но здесь "Честь Самурая" - враг пишет, что он попал, я верю.
+                    myPlayer.hp -= 10;
+                    updateUI();
+                    createParticles(myPlayer.x, myPlayer.y, myPlayer.z, 0xff0000);
+                    if (myPlayer.hp <= 0) {
+                        alert("ВЫ ПРОИГРАЛИ! Перезагрузите (F5)");
+                        location.reload();
+                    }
+                }
+            });
+        },
+
+        sendUpdate: () => {
+            if (!Net.conn || !Net.conn.open) return;
+            Net.conn.send({
+                type: 'update',
+                x: myPlayer.x, y: myPlayer.y, z: myPlayer.z,
+                yaw: myPlayer.yaw
+            });
+        },
+
+        sendShoot: (pos, dir, wepInfo) => {
+            if (!Net.conn || !Net.conn.open) return;
+            Net.conn.send({ type: 'shoot', pos: pos, dir: dir, wepInfo: wepInfo });
+        },
+        
+        sendHit: () => {
+             if (!Net.conn || !Net.conn.open) return;
+             Net.conn.send({ type: 'hit' });
+        }
+    };
+
+    // --- 2. ГРАФИКА И ИГРА (Three.js) ---
+    function init() {
+        // Сцена
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB);
+        scene.fog = new THREE.Fog(0x87CEEB, 10, 80);
+
+        // Камера
+        camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+
+        // Свет (делаем ярко, "Toon")
+        const ambient = new THREE.AmbientLight(0xffffff, 0.7);
+        scene.add(ambient);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(50, 100, 50);
+        scene.add(dirLight);
+
+        // Рендерер
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Пол
+        const gridHelper = new THREE.GridHelper(200, 50, 0xff0055, 0x555555);
+        scene.add(gridHelper);
+        const floorGeo = new THREE.PlaneGeometry(200, 200);
+        const floorMat = new THREE.MeshBasicMaterial({ color: 0x222222 });
+        const floor = new THREE.Mesh(floorGeo, floorMat);
+        floor.rotation.x = -Math.PI / 2;
+        scene.add(floor);
+
+        // Враг (красный куб, так как нет модели)
+        const remoteGeo = new THREE.BoxGeometry(1.5, 3, 1.5);
+        const remoteMat = new THREE.MeshStandardMaterial({ color: 0xff0055 }); 
+        remotePlayer.mesh = new THREE.Mesh(remoteGeo, remoteMat);
+        remotePlayer.mesh.position.y = -100; // Прячем пока не подключится
+        
+        // Добавим врагу "глаза"
+        const eyes = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.5, 1), new THREE.MeshBasicMaterial({color: 0x000000}));
+        eyes.position.y = 0.8;
+        eyes.position.z = 0.5;
+        remotePlayer.mesh.add(eyes);
+
+        scene.add(remotePlayer.mesh);
+
+        // Управление
+        document.addEventListener('keydown', (e) => onKey(e, true));
+        document.addEventListener('keyup', (e) => onKey(e, false));
+        document.addEventListener('mousedown', () => {
+            if(!isGameRunning) return;
+            document.body.requestPointerLock();
+            shoot();
         });
-
-        // Если к нам подключились
-        Net.peer.on('connection', conn => {
-            Net.conn = conn;
-            Net.isHost = true;
-            Net.setup();
-            document.getElementById('status').innerText = "Игрок подключен! (Вы Хост)";
-        });
-    },
-
-    connect: () => {
-        const id = document.getElementById('friend-id').value;
-        if(!id) return alert("Введите ID!");
-        Net.conn = Net.peer.connect(id);
-        Net.setup();
-        document.getElementById('status').innerText = "Подключено к хосту!";
-    },
-
-    setup: () => {
-        // Обработка входящих данных
-        Net.conn.on('data', data => {
-            // Синхронизируем врага (для меня Opp - это тот, кто прислал данные)
-            Game.opp.x = data.x;
-            Game.opp.y = data.y;
-            Game.opp.hp = data.hp;
-            
-            // Если пришел выстрел
-            if(data.shoot) {
-                spawnBullet(Game.opp.x, Game.opp.y, data.shoot.x, data.shoot.y, 'enemy');
+        document.addEventListener('mousemove', (e) => {
+            if (document.pointerLockElement === document.body) {
+                myPlayer.yaw -= e.movementX * CONF.mouseSens;
+                myPlayer.pitch -= e.movementY * CONF.mouseSens;
+                // Ограничение по вертикали
+                myPlayer.pitch = Math.max(-Math.PI/2 + 0.1, Math.min(Math.PI/2 - 0.1, myPlayer.pitch));
             }
         });
-    },
 
-    // Отправка своих данных врагу
-    send: (packet) => {
-        if(Net.conn && Net.conn.open) Net.conn.send(packet);
-    }
-};
-
-Net.init();
-
-// === 3. ИГРОВАЯ ЛОГИКА ===
-function update() {
-    // 1. Движение (WASD)
-    const speed = 4;
-    if(Game.keys['KeyW']) Game.me.y -= speed;
-    if(Game.keys['KeyS']) Game.me.y += speed;
-    if(Game.keys['KeyA']) Game.me.x -= speed;
-    if(Game.keys['KeyD']) Game.me.x += speed;
-
-    // 2. Стрельба (Клик)
-    let shotData = null;
-    if(Game.mouse.down) {
-        Game.mouse.down = false; // Сброс клика
-        // Создаем пулю локально
-        spawnBullet(Game.me.x, Game.me.y, Game.mouse.x, Game.mouse.y, 'me');
-        // Запоминаем куда стреляли для отправки
-        shotData = { x: Game.mouse.x, y: Game.mouse.y };
+        // Запуск
+        Net.init();
+        loop();
     }
 
-    // 3. Обновление пуль
-    for(let i = Game.bullets.length - 1; i >= 0; i--) {
-        let b = Game.bullets[i];
-        b.x += b.vx;
-        b.y += b.vy;
+    function startGame() {
+        document.getElementById('menu').style.display = 'none';
+        document.getElementById('ui').style.display = 'block';
+        document.getElementById('crosshair').style.display = 'block';
+        isGameRunning = true;
+        // Респавн на случайных позициях
+        myPlayer.x = (Math.random() - 0.5) * 40;
+        myPlayer.z = (Math.random() - 0.5) * 40;
+    }
 
-        // Попадание в меня (если пуля вражеская)
-        if(b.owner === 'enemy' && Math.hypot(b.x - Game.me.x, b.y - Game.me.y) < 20) {
-            Game.me.hp -= 10;
-            Game.bullets.splice(i, 1);
-            continue;
+    function onKey(e, isDown) {
+        const k = e.code;
+        if(k === 'KeyW') inputs.w = isDown;
+        if(k === 'KeyS') inputs.s = isDown;
+        if(k === 'KeyA') inputs.a = isDown;
+        if(k === 'KeyD') inputs.d = isDown;
+        if(k === 'Space') inputs.space = isDown;
+        
+        if (isDown && k === 'KeyE') {
+            myPlayer.wepIndex = 1 - myPlayer.wepIndex;
+            const wep = WEAPONS[myPlayer.wepIndex];
+            document.getElementById('weapon-info').innerText = "WEAPON: " + wep.name;
+            document.getElementById('weapon-info').style.color = "#" + wep.color.toString(16);
+        }
+    }
+
+    function shoot() {
+        const now = Date.now();
+        const wep = WEAPONS[myPlayer.wepIndex];
+        
+        if (now - lastShootTime < wep.rate) return;
+        lastShootTime = now;
+
+        const dir = new THREE.Vector3();
+        camera.getWorldDirection(dir);
+        
+        const spawnPos = camera.position.clone().add(dir.clone().multiplyScalar(1));
+        
+        // Локальный выстрел
+        spawnBullet(spawnPos, dir, wep, true);
+        
+        // Отправка
+        Net.sendShoot(spawnPos, dir, wep);
+    }
+
+    function spawnBullet(pos, dir, wep, isMine) {
+        const geo = new THREE.SphereGeometry(wep.size, 8, 8);
+        const mat = new THREE.MeshBasicMaterial({ color: wep.color });
+        const mesh = new THREE.Mesh(geo, mat);
+        
+        // Если пришло по сети pos и dir - объекты {x,y,z}, преобразуем
+        mesh.position.set(pos.x, pos.y, pos.z);
+        const velocity = new THREE.Vector3(dir.x, dir.y, dir.z).normalize().multiplyScalar(wep.speed);
+
+        scene.add(mesh);
+        bullets.push({ mesh: mesh, velocity: velocity, isMine: isMine, life: 2 });
+    }
+    
+    function createParticles(x, y, z, color) {
+        // Простая вспышка из кубиков
+        for(let i=0; i<8; i++) {
+             const geo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
+             const mat = new THREE.MeshBasicMaterial({ color: color });
+             const p = new THREE.Mesh(geo, mat);
+             p.position.set(x + (Math.random()-0.5), y + (Math.random()-0.5), z + (Math.random()-0.5));
+             scene.add(p);
+             // Затухание через твиннинга нет, просто таймер
+             setTimeout(() => scene.remove(p), 500);
+        }
+    }
+
+    function updatePhysics(dt) {
+        // Вращение
+        const yawQuat = new THREE.Quaternion();
+        yawQuat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), myPlayer.yaw);
+        
+        // Движение (вектор направления)
+        const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(yawQuat);
+        const right = new THREE.Vector3(1, 0, 0).applyQuaternion(yawQuat);
+        
+        const moveDir = new THREE.Vector3();
+        if (inputs.w) moveDir.add(forward);
+        if (inputs.s) moveDir.sub(forward);
+        if (inputs.d) moveDir.add(right);
+        if (inputs.a) moveDir.sub(right);
+        
+        moveDir.normalize();
+
+        myPlayer.x += moveDir.x * CONF.speed * dt;
+        myPlayer.z += moveDir.z * CONF.speed * dt;
+        
+        // Гравитация и прыжок
+        if (myPlayer.onGround) {
+            myPlayer.vy = 0;
+            if (inputs.space) {
+                myPlayer.vy = CONF.jump;
+                myPlayer.onGround = false;
+            }
+        } else {
+            myPlayer.vy -= CONF.gravity * dt;
+        }
+        myPlayer.y += myPlayer.vy * dt;
+
+        // Коллизия с полом
+        if (myPlayer.y < 1.5) { // 1.5 - половина высоты игрока
+            myPlayer.y = 1.5;
+            myPlayer.onGround = true;
+        }
+
+        // Применяем к камере
+        camera.position.set(myPlayer.x, myPlayer.y + 1, myPlayer.z); // Глаза выше ног
+        camera.quaternion.setFromEuler(new THREE.Euler(myPlayer.pitch, myPlayer.yaw, 0, 'YXZ'));
+    }
+
+    function updateGame(dt) {
+        updatePhysics(dt);
+        
+        // Интерполяция движения врага
+        if (remotePlayer.mesh) {
+            remotePlayer.mesh.position.x += (remotePlayer.targetX - remotePlayer.mesh.position.x) * 10 * dt;
+            remotePlayer.mesh.position.y += (remotePlayer.targetY - remotePlayer.mesh.position.y) * 10 * dt;
+            remotePlayer.mesh.position.z += (remotePlayer.targetZ - remotePlayer.mesh.position.z) * 10 * dt;
+        }
+
+        // Пули
+        for (let i = bullets.length - 1; i >= 0; i--) {
+            const b = bullets[i];
+            b.mesh.position.addScaledVector(b.velocity, dt);
+            b.life -= dt;
+
+            let hit = false;
+
+            // Попадание Моей пули во врага
+            if (b.isMine && remotePlayer.mesh) {
+                 const dist = b.mesh.position.distanceTo(remotePlayer.mesh.position);
+                 if (dist < 1.5) { // Попал!
+                     hit = true;
+                     createParticles(b.mesh.position.x, b.mesh.position.y, b.mesh.position.z, 0xffff00);
+                     Net.sendHit(); // Говорим врагу, что он получил леща
+                 }
+            }
+
+            // Удаление пули
+            if (b.life <= 0 || b.mesh.position.y < 0 || hit) {
+                scene.remove(b.mesh);
+                bullets.splice(i, 1);
+            }
         }
         
-        // Удаление, если улетела далеко
-        if(b.x < 0 || b.x > cvs.width || b.y < 0 || b.y > cvs.height) {
-            Game.bullets.splice(i, 1);
+        // Сеть - отправка пакетов (примерно раз в 50мс чтобы не забить канал)
+        // Для упрощения шлем каждый кадр, но PeerJS сам буферизирует
+        Net.sendUpdate();
+    }
+
+    function updateUI() {
+        const fill = document.getElementById('hp-bar-fill');
+        fill.style.width = myPlayer.hp + "%";
+    }
+
+    function log(txt) {
+        document.getElementById('log').innerText = txt;
+    }
+
+    function loop() {
+        requestAnimationFrame(loop);
+        const dt = Math.min(clock.getDelta(), 0.1);
+        
+        if (isGameRunning) {
+            updateGame(dt);
         }
+        
+        renderer.render(scene, camera);
     }
 
-    // 4. Отправка данных по сети
-    if(Net.conn) {
-        Net.send({
-            x: Game.me.x,
-            y: Game.me.y,
-            hp: Game.me.hp,
-            shoot: shotData // null или координаты выстрела
-        });
-    }
-}
-
-function spawnBullet(sx, sy, tx, ty, owner) {
-    const angle = Math.atan2(ty - sy, tx - sx);
-    const speed = 10;
-    Game.bullets.push({
-        x: sx, y: sy,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
-        owner: owner
-    });
-}
-
-// === 4. ОТРИСОВКА ===
-function draw() {
-    // Очистка фона
-    ctx.fillStyle = '#222';
-    ctx.fillRect(0, 0, cvs.width, cvs.height);
-
-    // Рисуем игроков
-    drawPlayer(Game.me);
-    drawPlayer(Game.opp);
-
-    // Рисуем пули
-    ctx.fillStyle = '#ffff00';
-    Game.bullets.forEach(b => {
-        ctx.beginPath();
-        ctx.arc(b.x, b.y, 5, 0, Math.PI*2);
-        ctx.fill();
-    });
-
-    requestAnimationFrame(loop);
-}
-
-function drawPlayer(p) {
-    // Тело
-    ctx.fillStyle = p.color;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, 20, 0, Math.PI*2);
-    ctx.fill();
-    
-    // HP Бар
-    ctx.fillStyle = 'red';
-    ctx.fillRect(p.x - 20, p.y - 35, 40, 5);
-    ctx.fillStyle = '#0f0';
-    ctx.fillRect(p.x - 20, p.y - 35, 40 * (p.hp / 100), 5);
-}
-
-// Главный цикл
-function loop() {
-    update();
-    draw();
-}
-
-// === 5. УПРАВЛЕНИЕ (Event Listeners) ===
-window.addEventListener('keydown', e => Game.keys[e.code] = true);
-window.addEventListener('keyup', e => Game.keys[e.code] = false);
-window.addEventListener('mousemove', e => { Game.mouse.x = e.clientX; Game.mouse.y = e.clientY; });
-window.addEventListener('mousedown', () => Game.mouse.down = true);
-window.addEventListener('resize', () => { cvs.width = window.innerWidth; cvs.height = window.innerHeight; });
-
-// Запуск
-loop();
+    // --- СТАРТ ---
+    init();
 
 </script>
 </body>
