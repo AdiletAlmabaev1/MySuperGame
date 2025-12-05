@@ -1,345 +1,808 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <title>Anime Party (Max 6 Players)</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
-    <style>
-        body { margin: 0; overflow: hidden; background: #111; font-family: 'Arial', sans-serif; }
-        
-        #menu {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: linear-gradient(135deg, #2b1055, #7597de);
-            display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100;
-        }
-        .box { 
-            background: white; padding: 40px; border-radius: 20px; 
-            text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5); 
-        }
-        h2 { margin: 0; color: #333; }
-        .code-box { background: #eee; padding: 10px; margin: 15px 0; font-family: monospace; font-size: 20px; border-radius: 5px; border: 1px dashed #333; }
-        button { 
-            padding: 12px 30px; font-size: 16px; border: none; border-radius: 30px; 
-            cursor: pointer; font-weight: bold; color: white; transition: 0.2s;
-        }
-        .btn-host { background: #6c5ce7; }
-        .btn-join { background: #00cec9; margin-left: 10px; }
-        .btn-host:hover { background: #5549b8; }
-        
-        /* UI */
-        #ui-layer { position: absolute; top: 10px; left: 10px; pointer-events: none; display: none; }
-        .stat { color: white; font-weight: bold; text-shadow: 1px 1px 2px black; font-size: 20px; }
-        #crosshair { 
-            position: absolute; top: 50%; left: 50%; width: 12px; height: 12px; 
-            background: rgba(255, 255, 255, 0.8); border: 2px solid black; 
-            border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; display: none;
-        }
-        
-        #players-list { position: absolute; top: 10px; right: 10px; color: yellow; font-family: monospace; text-align: right; font-weight: bold; text-shadow: 1px 1px black; }
-    </style>
-</head>
-<body>
+import pygame
+import socket
+import threading
+import pickle
+import math
+import time
+import random
+import sys
+from collections import deque
 
-<!-- МЕНЮ -->
-<div id="menu">
-    <div class="box" id="step1">
-        <h2>Anime Battle Royale</h2>
-        <p>Выберите роль:</p>
-        <button class="btn-host" onclick="Game.initHost()">Я СОЗДАЮ ИГРУ (HOST)</button>
-        <br><br>
-        <p>Или введите ID друга:</p>
-        <input type="text" id="host-id-input" placeholder="ID Хоста" style="padding:10px; width:200px;">
-        <button class="btn-join" onclick="Game.joinGame()">ПОДКЛЮЧИТЬСЯ</button>
-    </div>
+# ==================================================================================
+# КОНФИГУРАЦИЯ И КОНСТАНТЫ
+# ==================================================================================
 
-    <div class="box" id="step2-host" style="display:none;">
-        <h2>Ожидание игроков...</h2>
-        <p>Отправьте этот код друзьям:</p>
-        <div class="code-box" id="my-id-display">...</div>
-        <p>Подключено игроков: <span id="connected-count">0</span></p>
-        <button class="btn-host" onclick="Game.startGameUI()">НАЧАТЬ ИГРУ</button>
-    </div>
-    
-    <div class="box" id="step2-client" style="display:none;">
-        <h2>Подключение...</h2>
-        <p>Ждем ответа от сервера...</p>
-    </div>
-</div>
+WINDOW_WIDTH = 1280
+WINDOW_HEIGHT = 720
+FPS = 60
+SERVER_IP = '127.0.0.1'
+SERVER_PORT = 5555
+BUFFER_SIZE = 8192
 
-<!-- ИНТЕРФЕЙС -->
-<div id="ui-layer">
-    <div class="stat">HP: <span id="hp-val">100</span></div>
-</div>
-<div id="players-list">Players: 1</div>
-<div id="crosshair"></div>
+# Цвета
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+RED = (200, 50, 50)         # Dire / Enemy
+GREEN = (50, 200, 50)       # Radiant / Ally
+BLUE = (50, 50, 200)        # Player
+YELLOW = (200, 200, 50)     # Experience/Gold
+GRAY = (100, 100, 100)
+DARK_GRAY = (40, 40, 40)
+CYAN = (0, 255, 255)        # Mana
 
-<script>
-    // === НАСТРОЙКИ ===
-    const SETTINGS = {
-        colors: [0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff], // Цвета разных игроков
-        speed: 12,
-        syncRate: 50 // мс (обновление 20 раз в сек)
-    };
+# Параметры карты
+MAP_WIDTH = 2000
+MAP_HEIGHT = 2000
 
-    // === ДАННЫЕ ИГРЫ ===
-    const Game = {
-        isHost: false,
-        myId: null,
-        hostConn: null, // Если мы клиент - тут связь с хостом
-        clients: {},    // Если мы хост - тут список { id: conn }
+# Типы сущностей
+TYPE_HERO = 1
+TYPE_CREEP = 2
+TYPE_TOWER = 3
+TYPE_NEXUS = 4
+TYPE_PROJECTILE = 5
+
+# Команды
+TEAM_RADIANT = 0
+TEAM_DIRE = 1
+
+# ==================================================================================
+# ВСПОМОГАТЕЛЬНЫЕ КЛАССЫ (MATH & UTILS)
+# ==================================================================================
+
+class Vector2:
+    """Упрощенный класс вектора для совместимости и сериализации"""
+    def __init__(self, x, y):
+        self.x = float(x)
+        self.y = float(y)
+
+    def to_tuple(self):
+        return (int(self.x), int(self.y))
+
+    def distance_to(self, other):
+        return math.sqrt((self.x - other.x)**2 + (self.y - other.y)**2)
+
+    def normalize(self):
+        mag = math.sqrt(self.x**2 + self.y**2)
+        if mag != 0:
+            self.x /= mag
+            self.y /= mag
+        return self
+
+    def __add__(self, other):
+        return Vector2(self.x + other.x, self.y + other.y)
+
+    def __sub__(self, other):
+        return Vector2(self.x - other.x, self.y - other.y)
+
+    def __mul__(self, scalar):
+        return Vector2(self.x * scalar, self.y * scalar)
+
+    def copy(self):
+        return Vector2(self.x, self.y)
+
+def check_collision(entity_a, entity_b):
+    dist = entity_a.pos.distance_to(entity_b.pos)
+    return dist < (entity_a.radius + entity_b.radius)
+
+# ==================================================================================
+# ИГРОВЫЕ СУЩНОСТИ (SHARED LOGIC)
+# ==================================================================================
+
+class Entity:
+    def __init__(self, uid, x, y, radius, team):
+        self.uid = uid
+        self.pos = Vector2(x, y)
+        self.radius = radius
+        self.team = team
+        self.hp = 100
+        self.max_hp = 100
+        self.alive = True
+        self.type = 0
+        self.to_delete = False
+
+    def take_damage(self, amount):
+        self.hp -= amount
+        if self.hp <= 0:
+            self.hp = 0
+            self.alive = False
+            self.on_death()
+
+    def on_death(self):
+        pass # Переопределяется
+
+    def update(self, dt):
+        pass
+
+class Hero(Entity):
+    def __init__(self, uid, x, y, team, name="Hero"):
+        super().__init__(uid, x, y, 25, team)
+        self.type = TYPE_HERO
+        self.name = name
+        self.max_hp = 500
+        self.hp = 500
+        self.mana = 200
+        self.max_mana = 200
+        self.speed = 180
+        self.attack_range = 150
+        self.attack_cooldown = 0
+        self.attack_speed = 1.0 # секунд на атаку
+        self.target_pos = Vector2(x, y)
+        self.level = 1
+        self.exp = 0
+        self.gold = 0
         
-        // 3D движок
-        scene: null, camera: null, renderer: null,
-        myObj: null, // Мой персонаж (просто камера и хитбокс)
-        players: {}, // Другие игроки: { id: mesh }
-        
-        inputs: { w:0, a:0, s:0, d:0, yaw:0, pitch:0 },
-        isPlaying: false,
-        hp: 100
-    };
+        # Способности (Cooldowns)
+        self.q_cd = 0
+        self.w_cd = 0
+        self.e_cd = 0
+        self.q_max_cd = 5
+        self.w_max_cd = 10
+        self.e_max_cd = 2
 
-    // === СЕТЕВАЯ ЛОГИКА ===
-    const Net = {
-        peer: new Peer(),
+    def update(self, dt):
+        if not self.alive: return
+
+        # Движение
+        if self.pos.distance_to(self.target_pos) > 5:
+            direction = (self.target_pos - self.pos).normalize()
+            self.pos += direction * self.speed * dt
+
+        # Кулдауны
+        if self.attack_cooldown > 0: self.attack_cooldown -= dt
+        if self.q_cd > 0: self.q_cd -= dt
+        if self.w_cd > 0: self.w_cd -= dt
+        if self.e_cd > 0: self.e_cd -= dt
+
+        # Реген
+        if self.hp < self.max_hp: self.hp += 1 * dt
+        if self.mana < self.max_mana: self.mana += 2 * dt
+
+    def on_death(self):
+        self.pos = Vector2(-1000, -1000) # Убрать с карты
+        # Логика респавна обрабатывается сервером
+
+class Creep(Entity):
+    def __init__(self, uid, x, y, team):
+        super().__init__(uid, x, y, 15, team)
+        self.type = TYPE_CREEP
+        self.max_hp = 150
+        self.hp = 150
+        self.speed = 100
+        self.attack_range = 50
+        self.damage = 10
+        self.attack_cooldown = 0
+        self.target_id = None
         
-        init: () => {
-            Net.peer.on('open', id => {
-                Game.myId = id;
-                console.log("My ID: " + id);
-            });
-        },
+        # Waypoints (упрощенно: идти к вражеской базе)
+        if team == TEAM_RADIANT:
+            self.waypoints = [Vector2(MAP_WIDTH - 200, MAP_HEIGHT - 200)]
+        else:
+            self.waypoints = [Vector2(200, 200)]
+
+    def update(self, dt):
+        if not self.alive: return
         
-        // Хост принимает гостей
-        setupHost: () => {
-            document.getElementById('my-id-display').innerText = Game.myId;
+        # Простое движение к точке
+        if self.waypoints:
+            target = self.waypoints[0]
+            if self.pos.distance_to(target) > 5:
+                direction = (target - self.pos).normalize()
+                self.pos += direction * self.speed * dt
+            else:
+                self.waypoints.pop(0)
+
+        if self.attack_cooldown > 0:
+            self.attack_cooldown -= dt
+
+class Tower(Entity):
+    def __init__(self, uid, x, y, team):
+        super().__init__(uid, x, y, 40, team)
+        self.type = TYPE_TOWER
+        self.max_hp = 1000
+        self.hp = 1000
+        self.attack_range = 400
+        self.damage = 50
+        self.attack_cooldown = 0
+        self.attack_speed = 1.5
+
+    def update(self, dt):
+        if not self.alive: return
+        if self.attack_cooldown > 0:
+            self.attack_cooldown -= dt
+
+class Nexus(Entity):
+    def __init__(self, uid, x, y, team):
+        super().__init__(uid, x, y, 60, team)
+        self.type = TYPE_NEXUS
+        self.max_hp = 2500
+        self.hp = 2500
+
+class Projectile(Entity):
+    def __init__(self, uid, x, y, owner_id, target_pos, speed, damage, p_type="auto"):
+        super().__init__(uid, x, y, 5, -1) # Team -1 means neutral/technical
+        self.type = TYPE_PROJECTILE
+        self.owner_id = owner_id
+        self.target_pos = target_pos
+        self.speed = speed
+        self.damage = damage
+        self.p_type = p_type # 'auto', 'skill_q'
+        self.duration = 2.0 # Секунд жизни
+
+    def update(self, dt):
+        direction = (self.target_pos - self.pos).normalize()
+        self.pos += direction * self.speed * dt
+        self.duration -= dt
+        if self.duration <= 0 or self.pos.distance_to(self.target_pos) < 5:
+            self.to_delete = True
+
+# ==================================================================================
+# СЕРВЕРНАЯ ЧАСТЬ
+# ==================================================================================
+
+class GameServer:
+    def __init__(self):
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.socket.bind((SERVER_IP, SERVER_PORT))
+        self.socket.listen(5)
+        self.clients = {} # {addr: conn}
+        self.players = {} # {addr: hero_uid}
+        
+        self.entities = {}
+        self.next_uid = 1000
+        
+        self.running = True
+        self.lock = threading.Lock()
+        
+        # Инициализация карты
+        self.init_map()
+        
+        print(f"[SERVER] Started on {SERVER_IP}:{SERVER_PORT}")
+
+    def get_uid(self):
+        with self.lock:
+            self.next_uid += 1
+            return self.next_uid
+
+    def init_map(self):
+        # Radiant
+        self.spawn_entity(Nexus(1, 200, 200, TEAM_RADIANT))
+        self.spawn_entity(Tower(2, 600, 600, TEAM_RADIANT))
+        self.spawn_entity(Tower(3, 900, 900, TEAM_RADIANT))
+        
+        # Dire
+        self.spawn_entity(Nexus(10, MAP_WIDTH-200, MAP_HEIGHT-200, TEAM_DIRE))
+        self.spawn_entity(Tower(11, MAP_WIDTH-600, MAP_HEIGHT-600, TEAM_DIRE))
+        self.spawn_entity(Tower(12, MAP_WIDTH-900, MAP_HEIGHT-900, TEAM_DIRE))
+        
+        self.last_creep_spawn = time.time()
+        self.respawn_timers = {} # {hero_uid: time_left}
+
+    def spawn_entity(self, entity):
+        self.entities[entity.uid] = entity
+
+    def handle_client(self, conn, addr):
+        print(f"[SERVER] New connection: {addr}")
+        
+        # Создаем героя для игрока
+        team = TEAM_RADIANT if len(self.players) % 2 == 0 else TEAM_DIRE
+        spawn_pos = (250, 250) if team == TEAM_RADIANT else (MAP_WIDTH-250, MAP_HEIGHT-250)
+        
+        hero_uid = self.get_uid()
+        hero = Hero(hero_uid, spawn_pos[0], spawn_pos[1], team, f"Player {len(self.players)+1}")
+        
+        with self.lock:
+            self.spawn_entity(hero)
+            self.players[addr] = hero_uid
             
-            Net.peer.on('connection', conn => {
-                // Новый игрок подключился
-                conn.on('open', () => {
-                    console.log("Player joined: " + conn.peer);
-                    Game.clients[conn.peer] = conn;
-                    Game.addPlayer(conn.peer); // Создаем модельку для него
-                    document.getElementById('connected-count').innerText = Object.keys(Game.clients).length;
-                    
-                    // Хост отправляет новому игроку его "Номер цвета" и состояние мира
-                    conn.send({ type: 'welcome', id: conn.peer, colorIdx: Object.keys(Game.clients).length });
-                });
+        # Отправляем ID игроку
+        try:
+            conn.send(pickle.dumps({"type": "INIT", "uid": hero_uid, "map_size": (MAP_WIDTH, MAP_HEIGHT)}))
+        except:
+            return
 
-                conn.on('data', data => Net.handleData(conn.peer, data));
-                conn.on('close', () => Game.removePlayer(conn.peer));
-            });
-        },
-
-        // Клиент подключается к хосту
-        connectToHost: (hostId) => {
-            const conn = Net.peer.connect(hostId);
-            conn.on('open', () => {
-                Game.hostConn = conn;
-                document.getElementById('step2-client').innerHTML = "<h2>Готово!</h2><button onclick='Game.startGameUI()'>ВОЙТИ В БОЙ</button>";
-            });
-            conn.on('data', data => Net.handleClientData(data));
-            conn.on('close', () => alert("Связь с сервером потеряна"));
-        },
-
-        // Обработка данных НА СЕРВЕРЕ (Хосте)
-        handleData: (senderId, data) => {
-            if (data.type === 'move') {
-                // 1. Обновляем позицию у себя
-                Game.updatePlayerPos(senderId, data);
+        while self.running:
+            try:
+                data = conn.recv(BUFFER_SIZE)
+                if not data: break
                 
-                // 2. Рассылаем ЭТУ позицию всем ОСТАЛЬНЫМ (Броадкаст)
-                for (let clientId in Game.clients) {
-                    if (clientId !== senderId) {
-                        Game.clients[clientId].send({
-                            type: 'update',
-                            id: senderId,
-                            x: data.x, y: data.y, z: data.z, yaw: data.yaw
-                        });
-                    }
+                input_data = pickle.loads(data)
+                self.process_input(hero_uid, input_data)
+                
+            except Exception as e:
+                print(f"[SERVER] Error with {addr}: {e}")
+                break
+                
+        # Disconnect
+        print(f"[SERVER] Disconnected {addr}")
+        with self.lock:
+            if hero_uid in self.entities:
+                del self.entities[hero_uid]
+            del self.clients[addr]
+            del self.players[addr]
+        conn.close()
+
+    def process_input(self, hero_uid, data):
+        with self.lock:
+            if hero_uid not in self.entities: return
+            hero = self.entities[hero_uid]
+            if not hero.alive: return
+            
+            if data['type'] == 'MOVE':
+                hero.target_pos = Vector2(data['x'], data['y'])
+                
+            elif data['type'] == 'ATTACK':
+                # Простая атака по площади (для упрощения)
+                pass # Реализуем в update_game
+                
+            elif data['type'] == 'SKILL_Q':
+                if hero.q_cd <= 0 and hero.mana >= 20:
+                    hero.q_cd = hero.q_max_cd
+                    hero.mana -= 20
+                    # Fireball
+                    target = Vector2(data['x'], data['y'])
+                    proj = Projectile(self.get_uid(), hero.pos.x, hero.pos.y, hero.uid, target, 400, 50, "skill_q")
+                    self.spawn_entity(proj)
+
+    def game_loop(self):
+        clock = pygame.time.Clock()
+        
+        while self.running:
+            dt = clock.tick(60) / 1000.0
+            
+            with self.lock:
+                # Спавн крипов
+                if time.time() - self.last_creep_spawn > 30: # Каждые 30 сек
+                    self.last_creep_spawn = time.time()
+                    for i in range(3):
+                        c1 = Creep(self.get_uid(), 300 + i*20, 300, TEAM_RADIANT)
+                        c2 = Creep(self.get_uid(), MAP_WIDTH-300 - i*20, MAP_HEIGHT-300, TEAM_DIRE)
+                        self.spawn_entity(c1)
+                        self.spawn_entity(c2)
+                
+                # Обновление сущностей
+                to_remove = []
+                entities_list = list(self.entities.values())
+                
+                for uid, ent in self.entities.items():
+                    ent.update(dt)
+                    if not ent.alive and ent.type != TYPE_HERO:
+                        to_remove.append(uid)
+                    if getattr(ent, 'to_delete', False):
+                        to_remove.append(uid)
+                        
+                    # Логика боя (простая)
+                    if ent.type in [TYPE_HERO, TYPE_CREEP, TYPE_TOWER] and ent.alive:
+                        if hasattr(ent, 'attack_cooldown') and ent.attack_cooldown <= 0:
+                            # Ищем цель
+                            closest = None
+                            min_dist = ent.attack_range
+                            
+                            for other in entities_list:
+                                if other.uid != uid and other.team != ent.team and other.alive and other.type != TYPE_PROJECTILE:
+                                    dist = ent.pos.distance_to(other.pos)
+                                    if dist <= min_dist:
+                                        min_dist = dist
+                                        closest = other
+                            
+                            if closest:
+                                ent.attack_cooldown = getattr(ent, 'attack_speed', 1.0)
+                                # Создаем снаряд автоатаки
+                                p = Projectile(self.get_uid(), ent.pos.x, ent.pos.y, uid, closest.pos, 300, getattr(ent, 'damage', 20))
+                                self.spawn_entity(p)
+                                
+                    # Коллизии снарядов
+                    if ent.type == TYPE_PROJECTILE:
+                         for other in entities_list:
+                             if other.uid != ent.owner_id and other.type != TYPE_PROJECTILE and other.alive:
+                                 # Проверка: снаряд не должен бить своих, если это не лечение (тут только урон)
+                                 # Но нам надо знать команду владельца. Упростим: берем владельца из entities
+                                 owner = self.entities.get(ent.owner_id)
+                                 if owner and owner.team != other.team:
+                                     if check_collision(ent, other):
+                                         other.take_damage(ent.damage)
+                                         ent.to_delete = True
+                                         break
+
+                # Обработка смерти героев (Респавн)
+                for uid, ent in self.entities.items():
+                    if ent.type == TYPE_HERO and not ent.alive:
+                        if uid not in self.respawn_timers:
+                            self.respawn_timers[uid] = 5 # 5 сек респавн
+                            print(f"[GAME] Hero {uid} died. Respawn in 5s.")
+                
+                # Таймеры респавна
+                uids_to_respawn = []
+                for uid in list(self.respawn_timers.keys()):
+                    self.respawn_timers[uid] -= dt
+                    if self.respawn_timers[uid] <= 0:
+                        uids_to_respawn.append(uid)
+                
+                for uid in uids_to_respawn:
+                    del self.respawn_timers[uid]
+                    if uid in self.entities:
+                        hero = self.entities[uid]
+                        hero.alive = True
+                        hero.hp = hero.max_hp
+                        hero.mana = hero.max_mana
+                        if hero.team == TEAM_RADIANT:
+                            hero.pos = Vector2(250, 250)
+                        else:
+                            hero.pos = Vector2(MAP_WIDTH-250, MAP_HEIGHT-250)
+                        hero.target_pos = hero.pos.copy()
+
+                for uid in to_remove:
+                    if uid in self.entities:
+                        del self.entities[uid]
+
+                # Бродкаст состояния
+                game_state = {
+                    "entities": self.entities,
+                    "time": time.time()
                 }
-            }
-            if (data.type === 'shoot') {
-                 // Рассылаем всем выстрел
-                 const payload = { type: 'shoot', from: senderId };
-                 for (let cid in Game.clients) { Game.clients[cid].send(payload); }
-            }
-        },
+                data = pickle.dumps(game_state)
+                
+            # Отправка всем (вне лока, чтобы не блокировать логику)
+            bad_clients = []
+            for addr, conn in self.clients.items():
+                try:
+                    conn.send(data)
+                except:
+                    bad_clients.append(addr)
+            
+            for addr in bad_clients:
+                del self.clients[addr]
 
-        // Обработка данных НА КЛИЕНТЕ
-        handleClientData: (data) => {
-            if (data.type === 'update') {
-                // Хост говорит, где находится другой игрок
-                Game.updatePlayerPos(data.id, data);
-            }
-            else if (data.type === 'welcome') {
-                // Нам присвоили цвет
-                console.log("Connected as " + data.id);
-            }
-        }
-    };
-    Net.init();
+    def start(self):
+        threading.Thread(target=self.game_loop, daemon=True).start()
+        while self.running:
+            conn, addr = self.socket.accept()
+            self.clients[addr] = conn
+            threading.Thread(target=self.handle_client, args=(conn, addr), daemon=True).start()
 
-    // === УПРАВЛЕНИЕ МЕНЮ ===
-    Game.initHost = () => {
-        Game.isHost = true;
-        document.getElementById('step1').style.display = 'none';
-        document.getElementById('step2-host').style.display = 'block';
-        Net.setupHost();
-    };
+# ==================================================================================
+# КЛИЕНТСКАЯ ЧАСТЬ
+# ==================================================================================
 
-    Game.joinGame = () => {
-        const id = document.getElementById('host-id-input').value;
-        if (!id) return alert("Введите ID!");
-        Game.isHost = false;
-        document.getElementById('step1').style.display = 'none';
-        document.getElementById('step2-client').style.display = 'block';
-        Net.connectToHost(id);
-    };
+class GameClient:
+    def __init__(self):
+        pygame.init()
+        self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+        pygame.display.set_caption("Local MOBA Prototype")
+        self.font = pygame.font.SysFont("Arial", 14)
+        self.large_font = pygame.font.SysFont("Arial", 24)
+        
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.connected = False
+        self.my_uid = -1
+        self.entities = {}
+        
+        # Камера
+        self.camera_x = 0
+        self.camera_y = 0
+        self.map_size = (MAP_WIDTH, MAP_HEIGHT)
 
-    Game.startGameUI = () => {
-        document.getElementById('menu').style.display = 'none';
-        document.getElementById('ui-layer').style.display = 'block';
-        document.getElementById('crosshair').style.display = 'block';
-        Game.init3D();
-        Game.isPlaying = true;
-    };
+    def connect(self, ip):
+        try:
+            self.socket.connect((ip, SERVER_PORT))
+            
+            # Получаем первый пакет инициализации
+            data = self.socket.recv(BUFFER_SIZE)
+            init_packet = pickle.loads(data)
+            
+            if init_packet['type'] == "INIT":
+                self.my_uid = init_packet['uid']
+                self.map_size = init_packet['map_size']
+                print(f"[CLIENT] Connected! My UID: {self.my_uid}")
+                self.connected = True
+                
+                # Запуск потока приема данных
+                threading.Thread(target=self.receive_loop, daemon=True).start()
+                self.run()
+        except Exception as e:
+            print(f"[CLIENT] Connection failed: {e}")
 
-    // === ИГРОВОЙ ДВИЖОК ===
-    Game.init3D = () => {
-        Game.scene = new THREE.Scene();
-        Game.scene.background = new THREE.Color(0x88ccff);
-        Game.camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+    def receive_loop(self):
+        while self.connected:
+            try:
+                # В TCP поток может склеиваться, здесь упрощенная реализация
+                # Для продакшена нужно читать заголовок длины сообщения
+                data = self.socket.recv(BUFFER_SIZE * 4) 
+                if not data: break
+                
+                try:
+                    state = pickle.loads(data)
+                    self.entities = state['entities']
+                except:
+                    pass # Игнорируем битые пакеты (бывает при склейке)
+                    
+            except Exception as e:
+                print(f"[CLIENT] Recv error: {e}")
+                self.connected = False
+                break
+
+    def handle_input(self):
+        keys = pygame.key.get_pressed()
+        mouse_buttons = pygame.mouse.get_pressed()
+        mouse_pos = pygame.mouse.get_pos()
         
-        Game.renderer = new THREE.WebGLRenderer({antialias:true});
-        Game.renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(Game.renderer.domElement);
+        # Конвертация координат экрана в координаты мира
+        world_x = mouse_pos[0] + self.camera_x
+        world_y = mouse_pos[1] + self.camera_y
         
-        // Пол
-        const floor = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), new THREE.MeshBasicMaterial({color: 0x333333}));
-        floor.rotation.x = -Math.PI/2;
-        Game.scene.add(floor);
-        Game.scene.add(new THREE.GridHelper(100, 50));
+        # Движение камеры стрелками
+        if keys[pygame.K_RIGHT]: self.camera_x += 10
+        if keys[pygame.K_LEFT]: self.camera_x -= 10
+        if keys[pygame.K_DOWN]: self.camera_y += 10
+        if keys[pygame.K_UP]: self.camera_y -= 10
         
-        // Свет
-        Game.scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+        # Ограничение камеры
+        self.camera_x = max(0, min(self.camera_x, self.map_size[0] - WINDOW_WIDTH))
+        self.camera_y = max(0, min(self.camera_y, self.map_size[1] - WINDOW_HEIGHT))
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.connected = False
+                pygame.quit()
+                sys.exit()
+                
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 3: # Правая кнопка - Движение
+                    self.send_command({'type': 'MOVE', 'x': world_x, 'y': world_y})
+                if event.button == 1: # Левая кнопка - Атака/Выбор (упрощенно как Move пока)
+                    pass 
+
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_q:
+                    self.send_command({'type': 'SKILL_Q', 'x': world_x, 'y': world_y})
+
+    def send_command(self, data):
+        if self.connected:
+            try:
+                self.socket.send(pickle.dumps(data))
+            except:
+                pass
+
+    def draw_health_bar(self, entity, screen_x, screen_y):
+        width = 50
+        height = 6
+        hp_pct = entity.hp / entity.max_hp
         
-        // Я (Физический объект не нужен, только координаты)
-        Game.myObj = { x: 0, y: 1.6, z: 0 };
+        pygame.draw.rect(self.screen, BLACK, (screen_x - width//2, screen_y - entity.radius - 10, width, height))
+        color = GREEN if entity.team == TEAM_RADIANT else RED
+        pygame.draw.rect(self.screen, color, (screen_x - width//2, screen_y - entity.radius - 10, width * hp_pct, height))
+
+    def draw(self):
+        self.screen.fill(DARK_GRAY)
         
-        // Управление мышкой
-        document.body.requestPointerLock = document.body.requestPointerLock || document.body.mozRequestPointerLock;
-        document.body.onclick = () => { if(Game.isPlaying) document.body.requestPointerLock(); };
+        # Рисуем сетку земли
+        grid_size = 100
+        start_x = self.camera_x // grid_size * grid_size
+        start_y = self.camera_y // grid_size * grid_size
         
-        document.addEventListener('mousemove', e => {
-            if(document.pointerLockElement === document.body) {
-                Game.inputs.yaw -= e.movementX * 0.002;
-                Game.inputs.pitch -= e.movementY * 0.002;
-                Game.inputs.pitch = Math.max(-1.5, Math.min(1.5, Game.inputs.pitch));
-            }
-        });
+        for x in range(start_x - grid_size, start_x + WINDOW_WIDTH + grid_size, grid_size):
+            pygame.draw.line(self.screen, (50, 50, 50), (x - self.camera_x, 0), (x - self.camera_x, WINDOW_HEIGHT))
+        for y in range(start_y - grid_size, start_y + WINDOW_HEIGHT + grid_size, grid_size):
+            pygame.draw.line(self.screen, (50, 50, 50), (0, y - self.camera_y), (WINDOW_WIDTH, y - self.camera_y))
+
+        # Отрисовка сущностей
+        # Сортируем по Y для псевдо-глубины
+        draw_list = sorted(self.entities.values(), key=lambda e: e.pos.y)
         
-        document.addEventListener('keydown', e => {
-            if(e.code == 'KeyW') Game.inputs.w = 1;
-            if(e.code == 'KeyS') Game.inputs.s = 1;
-            if(e.code == 'KeyA') Game.inputs.a = 1;
-            if(e.code == 'KeyD') Game.inputs.d = 1;
-        });
-        document.addEventListener('keyup', e => {
-            if(e.code == 'KeyW') Game.inputs.w = 0;
-            if(e.code == 'KeyS') Game.inputs.s = 0;
-            if(e.code == 'KeyA') Game.inputs.a = 0;
-            if(e.code == 'KeyD') Game.inputs.d = 0;
-        });
+        my_hero = None
         
-        // Цикл
-        Game.animate();
-        setInterval(Game.sendMyPos, SETTINGS.syncRate);
-    };
+        for ent in draw_list:
+            sx = int(ent.pos.x - self.camera_x)
+            sy = int(ent.pos.y - self.camera_y)
+            
+            # Пропускаем, если вне экрана
+            if sx < -50 or sx > WINDOW_WIDTH + 50 or sy < -50 or sy > WINDOW_HEIGHT + 50:
+                continue
+                
+            if ent.uid == self.my_uid:
+                my_hero = ent
+                # Подсветка себя
+                pygame.draw.circle(self.screen, WHITE, (sx, sy), ent.radius + 2, 1)
+
+            color = GRAY
+            if ent.type == TYPE_HERO:
+                color = BLUE if ent.team == TEAM_RADIANT else (200, 100, 100)
+            elif ent.type == TYPE_CREEP:
+                color = GREEN if ent.team == TEAM_RADIANT else RED
+            elif ent.type == TYPE_TOWER:
+                color = (150, 255, 150) if ent.team == TEAM_RADIANT else (255, 150, 150)
+            elif ent.type == TYPE_NEXUS:
+                color = YELLOW
+            elif ent.type == TYPE_PROJECTILE:
+                color = CYAN
+
+            pygame.draw.circle(self.screen, color, (sx, sy), ent.radius)
+            
+            # HP Bar
+            if ent.type != TYPE_PROJECTILE:
+                self.draw_health_bar(ent, sx, sy)
+                
+            # Имя над героем
+            if ent.type == TYPE_HERO:
+                name_surf = self.font.render(ent.name, True, WHITE)
+                self.screen.blit(name_surf, (sx - name_surf.get_width()//2, sy - ent.radius - 25))
+
+        # UI
+        self.draw_ui(my_hero)
+        self.draw_minimap()
+
+        pygame.display.flip()
+
+    def draw_ui(self, hero):
+        # Панель скиллов
+        ui_y = WINDOW_HEIGHT - 80
+        pygame.draw.rect(self.screen, (20, 20, 20), (0, ui_y, WINDOW_WIDTH, 80))
+        
+        if hero:
+            # HP / Mana text
+            stats = f"HP: {int(hero.hp)}/{hero.max_hp}  MANA: {int(hero.mana)}/{hero.max_mana}"
+            txt = self.large_font.render(stats, True, WHITE)
+            self.screen.blit(txt, (250, ui_y + 25))
+            
+            # Скиллы
+            skills = [("Q", hero.q_cd, hero.q_max_cd), ("W", hero.w_cd, hero.w_max_cd), ("E", hero.e_cd, hero.e_max_cd)]
+            for i, (key, cd, max_cd) in enumerate(skills):
+                box_x = 500 + i * 70
+                box_y = ui_y + 10
+                
+                # Фон скилла
+                color = (100, 100, 200) if cd <= 0 else (50, 50, 50)
+                pygame.draw.rect(self.screen, color, (box_x, box_y, 60, 60))
+                pygame.draw.rect(self.screen, WHITE, (box_x, box_y, 60, 60), 2)
+                
+                # Текст кнопки
+                key_txt = self.large_font.render(key, True, WHITE)
+                self.screen.blit(key_txt, (box_x + 20, box_y + 5))
+                
+                # Кулдаун (затемнение)
+                if cd > 0:
+                    ratio = cd / max_cd
+                    h = int(60 * ratio)
+                    s = pygame.Surface((60, h), pygame.SRCALPHA)
+                    s.fill((0, 0, 0, 180))
+                    self.screen.blit(s, (box_x, box_y + (60 - h)))
+                    
+                    cd_txt = self.font.render(f"{cd:.1f}", True, WHITE)
+                    self.screen.blit(cd_txt, (box_x + 15, box_y + 35))
+
+    def draw_minimap(self):
+        map_size = 150
+        margin = 20
+        x = margin
+        y = WINDOW_HEIGHT - map_size - margin
+        
+        # Фон
+        pygame.draw.rect(self.screen, BLACK, (x, y, map_size, map_size))
+        pygame.draw.rect(self.screen, WHITE, (x, y, map_size, map_size), 2)
+        
+        scale_x = map_size / self.map_size[0]
+        scale_y = map_size / self.map_size[1]
+        
+        for ent in self.entities.values():
+            mx = x + int(ent.pos.x * scale_x)
+            my = y + int(ent.pos.y * scale_y)
+            
+            c = GRAY
+            if ent.team == TEAM_RADIANT: c = GREEN
+            elif ent.team == TEAM_DIRE: c = RED
+            
+            size = 2
+            if ent.type == TYPE_HERO:
+                size = 4
+                c = WHITE if ent.uid == self.my_uid else c
+            elif ent.type == TYPE_TOWER:
+                size = 3
+            
+            pygame.draw.circle(self.screen, c, (mx, my), size)
+            
+        # Рамка камеры
+        cx = x + int(self.camera_x * scale_x)
+        cy = y + int(self.camera_y * scale_y)
+        cw = int(WINDOW_WIDTH * scale_x)
+        ch = int(WINDOW_HEIGHT * scale_y)
+        pygame.draw.rect(self.screen, WHITE, (cx, cy, cw, ch), 1)
+
+    def run(self):
+        clock = pygame.time.Clock()
+        while self.connected:
+            self.handle_input()
+            self.draw()
+            clock.tick(FPS)
+            
+            # Центрирование камеры на герое
+            if self.my_uid in self.entities:
+                me = self.entities[self.my_uid]
+                self.camera_x = me.pos.x - WINDOW_WIDTH // 2
+                self.camera_y = me.pos.y - WINDOW_HEIGHT // 2
+
+# ==================================================================================
+# ГЛАВНОЕ МЕНЮ И ЗАПУСК
+# ==================================================================================
+
+def main_menu():
+    pygame.init()
+    screen = pygame.display.set_mode((600, 400))
+    pygame.display.set_caption("MOBA Launcher")
+    font = pygame.font.SysFont("Arial", 30)
     
-    // Добавить другого игрока на сцену
-    Game.addPlayer = (id) => {
-        if(Game.players[id]) return; // Уже есть
-        
-        const color = SETTINGS.colors[Object.keys(Game.players).length % SETTINGS.colors.length];
-        
-        // Тело "Аниме" персонажа (простая сборка)
-        const group = new THREE.Group();
-        const body = new THREE.Mesh(new THREE.BoxGeometry(1, 1.5, 0.5), new THREE.MeshBasicMaterial({color: color}));
-        const head = new THREE.Mesh(new THREE.SphereGeometry(0.4), new THREE.MeshBasicMaterial({color: 0xffddaa}));
-        head.position.y = 1;
-        
-        group.add(body);
-        group.add(head);
-        
-        Game.scene.add(group);
-        Game.players[id] = group;
-        document.getElementById('players-list').innerText = "Players: " + (Object.keys(Game.players).length + 1);
-    };
+    input_box = pygame.Rect(200, 200, 200, 50)
+    color_inactive = pygame.Color('lightskyblue3')
+    color_active = pygame.Color('dodgerblue2')
+    color = color_inactive
+    active = False
+    text = '127.0.0.1'
     
-    // Обновить позицию другого игрока
-    Game.updatePlayerPos = (id, data) => {
-        if(!Game.players[id]) Game.addPlayer(id);
-        const p = Game.players[id];
-        p.position.set(data.x, data.y, data.z);
-        p.rotation.y = data.yaw;
-    };
-    
-    Game.removePlayer = (id) => {
-        if(Game.players[id]) {
-            Game.scene.remove(Game.players[id]);
-            delete Game.players[id];
-        }
-    };
-    
-    // Физика движения
-    Game.animate = () => {
-        requestAnimationFrame(Game.animate);
+    while True:
+        screen.fill((30, 30, 30))
         
-        // Движение
-        const dir = new THREE.Vector3();
-        dir.z = Game.inputs.w - Game.inputs.s;
-        dir.x = Game.inputs.d - Game.inputs.a;
-        dir.applyAxisAngle(new THREE.Vector3(0,1,0), Game.inputs.yaw);
-        dir.normalize().multiplyScalar(SETTINGS.speed * 0.016);
+        title = font.render("Simple Python MOBA", True, WHITE)
+        screen.blit(title, (180, 50))
         
-        Game.myObj.x += dir.x;
-        Game.myObj.z += dir.z; // -
+        # Кнопки
+        btn_host = pygame.Rect(100, 120, 150, 50)
+        btn_join = pygame.Rect(350, 120, 150, 50)
         
-        // Камера
-        Game.camera.position.set(Game.myObj.x, Game.myObj.y, Game.myObj.z);
-        Game.camera.rotation.set(Game.inputs.pitch, Game.inputs.yaw, 0, 'YXZ');
+        pygame.draw.rect(screen, (50, 150, 50), btn_host)
+        pygame.draw.rect(screen, (50, 50, 150), btn_join)
         
-        Game.renderer.render(Game.scene, Game.camera);
-    };
+        screen.blit(font.render("HOST", True, WHITE), (135, 130))
+        screen.blit(font.render("JOIN", True, WHITE), (390, 130))
+        
+        # Поле IP
+        txt_surf = font.render(text, True, color)
+        width = max(200, txt_surf.get_width()+10)
+        input_box.w = width
+        screen.blit(txt_surf, (input_box.x+5, input_box.y+5))
+        pygame.draw.rect(screen, color, input_box, 2)
+        
+        lbl_ip = font.render("IP Address:", True, WHITE)
+        screen.blit(lbl_ip, (50, 210))
 
-    // Отправка данных
-    Game.sendMyPos = () => {
-        if(!Game.isPlaying) return;
-        
-        const packet = {
-            type: 'move', // если я клиент, я шлю 'move', хост поймет
-            type: Game.isHost ? 'update' : 'move', 
-            x: Game.myObj.x,
-            y: Game.myObj.y,
-            z: Game.myObj.z,
-            yaw: Game.inputs.yaw
-        };
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return None, None
+                
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if btn_host.collidepoint(event.pos):
+                    return "HOST", text
+                if btn_join.collidepoint(event.pos):
+                    return "JOIN", text
+                    
+                if input_box.collidepoint(event.pos):
+                    active = not active
+                else:
+                    active = False
+                color = color_active if active else color_inactive
+                
+            if event.type == pygame.KEYDOWN:
+                if active:
+                    if event.key == pygame.K_RETURN:
+                        return "JOIN", text
+                    elif event.key == pygame.K_BACKSPACE:
+                        text = text[:-1]
+                    else:
+                        text += event.unicode
+                        
+        pygame.display.flip()
 
-        if (Game.isHost) {
-            // Хост обновляет всех
-             packet.type = 'update';
-             packet.id = Game.myId; // Пометка "Это данные Хоста"
-             // Рассылаем всем
-             for(let cid in Game.clients) { Game.clients[cid].send(packet); }
-        } else {
-            // Клиент шлет только Хосту
-            if(Game.hostConn && Game.hostConn.open) {
-                packet.type = 'move';
-                Game.hostConn.send(packet);
-            }
-        }
-    };
-</script>
-</body>
-</html>
+if __name__ == "__main__":
+    mode, ip = main_menu()
+    
+    if mode == "HOST":
+        pygame.quit() # Закрываем меню
+        # Запускаем сервер
+        server = GameServer()
+        # Автоматически запускаем клиент для хоста
+        threading.Thread(target=server.start, daemon=True).start()
+        
+        client = GameClient()
+        client.connect('127.0.0.1')
+        
+    elif mode == "JOIN":
+        pygame.quit()
+        client = GameClient()
+        client.connect(ip)
