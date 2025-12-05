@@ -2,421 +2,344 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Anime Network FPS</title>
-    <!-- Подключаем библиотеки -->
+    <title>Anime Party (Max 6 Players)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', Tahoma, sans-serif; }
+        body { margin: 0; overflow: hidden; background: #111; font-family: 'Arial', sans-serif; }
         
-        /* Меню подключения */
         #menu {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(30, 20, 40, 0.95);
-            display: flex; flex-direction: column; justify-content: center; align-items: center;
-            color: white; z-index: 100;
+            background: linear-gradient(135deg, #2b1055, #7597de);
+            display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100;
         }
-        .box { background: rgba(255, 255, 255, 0.1); padding: 30px; border-radius: 15px; text-align: center; border: 2px solid #ff0055; box-shadow: 0 0 20px #ff0055; }
-        input { font-size: 18px; padding: 10px; width: 250px; margin: 10px; text-align: center; }
-        button { font-size: 18px; padding: 10px 30px; background: #ff0055; color: white; border: none; cursor: pointer; transition: 0.2s; }
-        button:hover { background: white; color: #ff0055; }
+        .box { 
+            background: white; padding: 40px; border-radius: 20px; 
+            text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5); 
+        }
+        h2 { margin: 0; color: #333; }
+        .code-box { background: #eee; padding: 10px; margin: 15px 0; font-family: monospace; font-size: 20px; border-radius: 5px; border: 1px dashed #333; }
+        button { 
+            padding: 12px 30px; font-size: 16px; border: none; border-radius: 30px; 
+            cursor: pointer; font-weight: bold; color: white; transition: 0.2s;
+        }
+        .btn-host { background: #6c5ce7; }
+        .btn-join { background: #00cec9; margin-left: 10px; }
+        .btn-host:hover { background: #5549b8; }
         
-        /* UI в игре */
-        #ui { position: absolute; top: 20px; left: 20px; z-index: 10; display: none; pointer-events: none; }
-        .hp-bar-bg { width: 300px; height: 30px; background: rgba(0,0,0,0.6); border: 2px solid white; transform: skewX(-20deg); overflow: hidden; }
-        #hp-bar-fill { width: 100%; height: 100%; background: linear-gradient(90deg, #ff9900, #ff0055); transition: width 0.2s; }
-        #weapon-info { margin-top: 10px; color: yellow; font-weight: bold; font-size: 24px; text-shadow: 2px 2px black; }
-
-        /* Прицел */
-        #crosshair {
-            position: absolute; top: 50%; left: 50%; width: 10px; height: 10px;
-            background: white; border-radius: 50%; transform: translate(-50%, -50%);
-            z-index: 9; border: 2px solid black; pointer-events: none; display: none;
+        /* UI */
+        #ui-layer { position: absolute; top: 10px; left: 10px; pointer-events: none; display: none; }
+        .stat { color: white; font-weight: bold; text-shadow: 1px 1px 2px black; font-size: 20px; }
+        #crosshair { 
+            position: absolute; top: 50%; left: 50%; width: 12px; height: 12px; 
+            background: rgba(255, 255, 255, 0.8); border: 2px solid black; 
+            border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; display: none;
         }
-
-        #log { position: absolute; bottom: 10px; left: 10px; color: #aaa; font-size: 12px; z-index: 200; }
+        
+        #players-list { position: absolute; top: 10px; right: 10px; color: yellow; font-family: monospace; text-align: right; font-weight: bold; text-shadow: 1px 1px black; }
     </style>
 </head>
 <body>
 
+<!-- МЕНЮ -->
 <div id="menu">
-    <div class="box">
-        <h1 style="margin: 0 0 20px 0; color: #ff0055; font-style: italic;">ANIME PVP ONLINE</h1>
-        <p>Ваш ID (отправьте другу):</p>
-        <input type="text" id="my-id" readonly onclick="this.select()" value="Подключение...">
-        <p>ID Друга:</p>
-        <input type="text" id="friend-id" placeholder="Вставьте ID сюда">
+    <div class="box" id="step1">
+        <h2>Anime Battle Royale</h2>
+        <p>Выберите роль:</p>
+        <button class="btn-host" onclick="Game.initHost()">Я СОЗДАЮ ИГРУ (HOST)</button>
         <br><br>
-        <button onclick="Net.connectToPeer()">CONNECT & PLAY</button>
+        <p>Или введите ID друга:</p>
+        <input type="text" id="host-id-input" placeholder="ID Хоста" style="padding:10px; width:200px;">
+        <button class="btn-join" onclick="Game.joinGame()">ПОДКЛЮЧИТЬСЯ</button>
+    </div>
+
+    <div class="box" id="step2-host" style="display:none;">
+        <h2>Ожидание игроков...</h2>
+        <p>Отправьте этот код друзьям:</p>
+        <div class="code-box" id="my-id-display">...</div>
+        <p>Подключено игроков: <span id="connected-count">0</span></p>
+        <button class="btn-host" onclick="Game.startGameUI()">НАЧАТЬ ИГРУ</button>
+    </div>
+    
+    <div class="box" id="step2-client" style="display:none;">
+        <h2>Подключение...</h2>
+        <p>Ждем ответа от сервера...</p>
     </div>
 </div>
 
-<div id="ui">
-    <div class="hp-bar-bg"><div id="hp-bar-fill"></div></div>
-    <div id="weapon-info">WEAPON: BLASTER (E to switch)</div>
+<!-- ИНТЕРФЕЙС -->
+<div id="ui-layer">
+    <div class="stat">HP: <span id="hp-val">100</span></div>
 </div>
+<div id="players-list">Players: 1</div>
 <div id="crosshair"></div>
-<div id="log">Ожидание...</div>
 
 <script>
-    // --- НАСТРОЙКИ ---
-    const CONF = {
-        speed: 15,
-        jump: 25,
-        mouseSens: 0.002,
-        gravity: 50
+    // === НАСТРОЙКИ ===
+    const SETTINGS = {
+        colors: [0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff], // Цвета разных игроков
+        speed: 12,
+        syncRate: 50 // мс (обновление 20 раз в сек)
     };
 
-    const WEAPONS = [
-        { name: "PLASMA GUN", color: 0x00ffff, speed: 60, rate: 300, size: 0.3 },
-        { name: "HEAVY CANNON", color: 0xff0000, speed: 40, rate: 800, size: 0.8 }
-    ];
-
-    // --- ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ---
-    let camera, scene, renderer;
-    let myPlayer = { 
-        x: 0, y: 5, z: 0, 
-        yaw: 0, pitch: 0, 
-        vy: 0, onGround: false,
-        hp: 100,
-        wepIndex: 0
+    // === ДАННЫЕ ИГРЫ ===
+    const Game = {
+        isHost: false,
+        myId: null,
+        hostConn: null, // Если мы клиент - тут связь с хостом
+        clients: {},    // Если мы хост - тут список { id: conn }
+        
+        // 3D движок
+        scene: null, camera: null, renderer: null,
+        myObj: null, // Мой персонаж (просто камера и хитбокс)
+        players: {}, // Другие игроки: { id: mesh }
+        
+        inputs: { w:0, a:0, s:0, d:0, yaw:0, pitch:0 },
+        isPlaying: false,
+        hp: 100
     };
-    let remotePlayer = { mesh: null, hp: 100, targetX:0, targetZ:0, targetY:0 }; // Враг
-    let bullets = [];
-    let inputs = { w: false, a: false, s: false, d: false, space: false };
-    let clock = new THREE.Clock();
-    let isGameRunning = false;
-    let lastShootTime = 0;
 
-    // --- 1. СЕТЕВАЯ ЧАСТЬ (PeerJS) ---
+    // === СЕТЕВАЯ ЛОГИКА ===
     const Net = {
-        peer: null,
-        conn: null,
-
+        peer: new Peer(),
+        
         init: () => {
-            Net.peer = new Peer(); 
-
-            Net.peer.on('open', (id) => {
-                document.getElementById('my-id').value = id;
-                log("Сеть готова. Ждем подключения...");
+            Net.peer.on('open', id => {
+                Game.myId = id;
+                console.log("My ID: " + id);
             });
-
-            Net.peer.on('connection', (c) => {
-                if(Net.conn) return; // Уже играем
-                Net.conn = c;
-                Net.setupConnection();
-                startGame();
-            });
-        },
-
-        connectToPeer: () => {
-            const friendId = document.getElementById('friend-id').value;
-            if(!friendId) return alert("Введите ID друга!");
-            Net.conn = Net.peer.connect(friendId);
-            Net.conn.on('open', () => {
-                Net.setupConnection();
-                startGame();
-            });
-        },
-
-        setupConnection: () => {
-            log("Подключено! Игра начинается!");
-            // Обработка входящих данных
-            Net.conn.on('data', (data) => {
-                if (data.type === 'update') {
-                    // Обновляем позицию врага
-                    if(remotePlayer.mesh) {
-                        remotePlayer.targetX = data.x;
-                        remotePlayer.targetY = data.y;
-                        remotePlayer.targetZ = data.z;
-                        remotePlayer.mesh.rotation.y = data.yaw;
-                        
-                        // Аниме интерполяция (плавность) будет в update()
-                    }
-                } 
-                else if (data.type === 'shoot') {
-                    // Враг выстрелил
-                    spawnBullet(data.pos, data.dir, data.wepInfo, false);
-                }
-                else if (data.type === 'hit') {
-                    // В меня попали! Я (жертва) подтверждаю урон.
-                    // Для честности в P2P обычно доверяют стреляющему,
-                    // но здесь "Честь Самурая" - враг пишет, что он попал, я верю.
-                    myPlayer.hp -= 10;
-                    updateUI();
-                    createParticles(myPlayer.x, myPlayer.y, myPlayer.z, 0xff0000);
-                    if (myPlayer.hp <= 0) {
-                        alert("ВЫ ПРОИГРАЛИ! Перезагрузите (F5)");
-                        location.reload();
-                    }
-                }
-            });
-        },
-
-        sendUpdate: () => {
-            if (!Net.conn || !Net.conn.open) return;
-            Net.conn.send({
-                type: 'update',
-                x: myPlayer.x, y: myPlayer.y, z: myPlayer.z,
-                yaw: myPlayer.yaw
-            });
-        },
-
-        sendShoot: (pos, dir, wepInfo) => {
-            if (!Net.conn || !Net.conn.open) return;
-            Net.conn.send({ type: 'shoot', pos: pos, dir: dir, wepInfo: wepInfo });
         },
         
-        sendHit: () => {
-             if (!Net.conn || !Net.conn.open) return;
-             Net.conn.send({ type: 'hit' });
+        // Хост принимает гостей
+        setupHost: () => {
+            document.getElementById('my-id-display').innerText = Game.myId;
+            
+            Net.peer.on('connection', conn => {
+                // Новый игрок подключился
+                conn.on('open', () => {
+                    console.log("Player joined: " + conn.peer);
+                    Game.clients[conn.peer] = conn;
+                    Game.addPlayer(conn.peer); // Создаем модельку для него
+                    document.getElementById('connected-count').innerText = Object.keys(Game.clients).length;
+                    
+                    // Хост отправляет новому игроку его "Номер цвета" и состояние мира
+                    conn.send({ type: 'welcome', id: conn.peer, colorIdx: Object.keys(Game.clients).length });
+                });
+
+                conn.on('data', data => Net.handleData(conn.peer, data));
+                conn.on('close', () => Game.removePlayer(conn.peer));
+            });
+        },
+
+        // Клиент подключается к хосту
+        connectToHost: (hostId) => {
+            const conn = Net.peer.connect(hostId);
+            conn.on('open', () => {
+                Game.hostConn = conn;
+                document.getElementById('step2-client').innerHTML = "<h2>Готово!</h2><button onclick='Game.startGameUI()'>ВОЙТИ В БОЙ</button>";
+            });
+            conn.on('data', data => Net.handleClientData(data));
+            conn.on('close', () => alert("Связь с сервером потеряна"));
+        },
+
+        // Обработка данных НА СЕРВЕРЕ (Хосте)
+        handleData: (senderId, data) => {
+            if (data.type === 'move') {
+                // 1. Обновляем позицию у себя
+                Game.updatePlayerPos(senderId, data);
+                
+                // 2. Рассылаем ЭТУ позицию всем ОСТАЛЬНЫМ (Броадкаст)
+                for (let clientId in Game.clients) {
+                    if (clientId !== senderId) {
+                        Game.clients[clientId].send({
+                            type: 'update',
+                            id: senderId,
+                            x: data.x, y: data.y, z: data.z, yaw: data.yaw
+                        });
+                    }
+                }
+            }
+            if (data.type === 'shoot') {
+                 // Рассылаем всем выстрел
+                 const payload = { type: 'shoot', from: senderId };
+                 for (let cid in Game.clients) { Game.clients[cid].send(payload); }
+            }
+        },
+
+        // Обработка данных НА КЛИЕНТЕ
+        handleClientData: (data) => {
+            if (data.type === 'update') {
+                // Хост говорит, где находится другой игрок
+                Game.updatePlayerPos(data.id, data);
+            }
+            else if (data.type === 'welcome') {
+                // Нам присвоили цвет
+                console.log("Connected as " + data.id);
+            }
         }
     };
+    Net.init();
 
-    // --- 2. ГРАФИКА И ИГРА (Three.js) ---
-    function init() {
-        // Сцена
-        scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x87CEEB);
-        scene.fog = new THREE.Fog(0x87CEEB, 10, 80);
+    // === УПРАВЛЕНИЕ МЕНЮ ===
+    Game.initHost = () => {
+        Game.isHost = true;
+        document.getElementById('step1').style.display = 'none';
+        document.getElementById('step2-host').style.display = 'block';
+        Net.setupHost();
+    };
 
-        // Камера
-        camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+    Game.joinGame = () => {
+        const id = document.getElementById('host-id-input').value;
+        if (!id) return alert("Введите ID!");
+        Game.isHost = false;
+        document.getElementById('step1').style.display = 'none';
+        document.getElementById('step2-client').style.display = 'block';
+        Net.connectToHost(id);
+    };
 
-        // Свет (делаем ярко, "Toon")
-        const ambient = new THREE.AmbientLight(0xffffff, 0.7);
-        scene.add(ambient);
-        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        dirLight.position.set(50, 100, 50);
-        scene.add(dirLight);
-
-        // Рендерер
-        renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
-
-        // Пол
-        const gridHelper = new THREE.GridHelper(200, 50, 0xff0055, 0x555555);
-        scene.add(gridHelper);
-        const floorGeo = new THREE.PlaneGeometry(200, 200);
-        const floorMat = new THREE.MeshBasicMaterial({ color: 0x222222 });
-        const floor = new THREE.Mesh(floorGeo, floorMat);
-        floor.rotation.x = -Math.PI / 2;
-        scene.add(floor);
-
-        // Враг (красный куб, так как нет модели)
-        const remoteGeo = new THREE.BoxGeometry(1.5, 3, 1.5);
-        const remoteMat = new THREE.MeshStandardMaterial({ color: 0xff0055 }); 
-        remotePlayer.mesh = new THREE.Mesh(remoteGeo, remoteMat);
-        remotePlayer.mesh.position.y = -100; // Прячем пока не подключится
-        
-        // Добавим врагу "глаза"
-        const eyes = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.5, 1), new THREE.MeshBasicMaterial({color: 0x000000}));
-        eyes.position.y = 0.8;
-        eyes.position.z = 0.5;
-        remotePlayer.mesh.add(eyes);
-
-        scene.add(remotePlayer.mesh);
-
-        // Управление
-        document.addEventListener('keydown', (e) => onKey(e, true));
-        document.addEventListener('keyup', (e) => onKey(e, false));
-        document.addEventListener('mousedown', () => {
-            if(!isGameRunning) return;
-            document.body.requestPointerLock();
-            shoot();
-        });
-        document.addEventListener('mousemove', (e) => {
-            if (document.pointerLockElement === document.body) {
-                myPlayer.yaw -= e.movementX * CONF.mouseSens;
-                myPlayer.pitch -= e.movementY * CONF.mouseSens;
-                // Ограничение по вертикали
-                myPlayer.pitch = Math.max(-Math.PI/2 + 0.1, Math.min(Math.PI/2 - 0.1, myPlayer.pitch));
-            }
-        });
-
-        // Запуск
-        Net.init();
-        loop();
-    }
-
-    function startGame() {
+    Game.startGameUI = () => {
         document.getElementById('menu').style.display = 'none';
-        document.getElementById('ui').style.display = 'block';
+        document.getElementById('ui-layer').style.display = 'block';
         document.getElementById('crosshair').style.display = 'block';
-        isGameRunning = true;
-        // Респавн на случайных позициях
-        myPlayer.x = (Math.random() - 0.5) * 40;
-        myPlayer.z = (Math.random() - 0.5) * 40;
-    }
+        Game.init3D();
+        Game.isPlaying = true;
+    };
 
-    function onKey(e, isDown) {
-        const k = e.code;
-        if(k === 'KeyW') inputs.w = isDown;
-        if(k === 'KeyS') inputs.s = isDown;
-        if(k === 'KeyA') inputs.a = isDown;
-        if(k === 'KeyD') inputs.d = isDown;
-        if(k === 'Space') inputs.space = isDown;
+    // === ИГРОВОЙ ДВИЖОК ===
+    Game.init3D = () => {
+        Game.scene = new THREE.Scene();
+        Game.scene.background = new THREE.Color(0x88ccff);
+        Game.camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
         
-        if (isDown && k === 'KeyE') {
-            myPlayer.wepIndex = 1 - myPlayer.wepIndex;
-            const wep = WEAPONS[myPlayer.wepIndex];
-            document.getElementById('weapon-info').innerText = "WEAPON: " + wep.name;
-            document.getElementById('weapon-info').style.color = "#" + wep.color.toString(16);
-        }
-    }
-
-    function shoot() {
-        const now = Date.now();
-        const wep = WEAPONS[myPlayer.wepIndex];
+        Game.renderer = new THREE.WebGLRenderer({antialias:true});
+        Game.renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(Game.renderer.domElement);
         
-        if (now - lastShootTime < wep.rate) return;
-        lastShootTime = now;
-
-        const dir = new THREE.Vector3();
-        camera.getWorldDirection(dir);
+        // Пол
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), new THREE.MeshBasicMaterial({color: 0x333333}));
+        floor.rotation.x = -Math.PI/2;
+        Game.scene.add(floor);
+        Game.scene.add(new THREE.GridHelper(100, 50));
         
-        const spawnPos = camera.position.clone().add(dir.clone().multiplyScalar(1));
+        // Свет
+        Game.scene.add(new THREE.AmbientLight(0xffffff, 0.8));
         
-        // Локальный выстрел
-        spawnBullet(spawnPos, dir, wep, true);
+        // Я (Физический объект не нужен, только координаты)
+        Game.myObj = { x: 0, y: 1.6, z: 0 };
         
-        // Отправка
-        Net.sendShoot(spawnPos, dir, wep);
-    }
-
-    function spawnBullet(pos, dir, wep, isMine) {
-        const geo = new THREE.SphereGeometry(wep.size, 8, 8);
-        const mat = new THREE.MeshBasicMaterial({ color: wep.color });
-        const mesh = new THREE.Mesh(geo, mat);
+        // Управление мышкой
+        document.body.requestPointerLock = document.body.requestPointerLock || document.body.mozRequestPointerLock;
+        document.body.onclick = () => { if(Game.isPlaying) document.body.requestPointerLock(); };
         
-        // Если пришло по сети pos и dir - объекты {x,y,z}, преобразуем
-        mesh.position.set(pos.x, pos.y, pos.z);
-        const velocity = new THREE.Vector3(dir.x, dir.y, dir.z).normalize().multiplyScalar(wep.speed);
-
-        scene.add(mesh);
-        bullets.push({ mesh: mesh, velocity: velocity, isMine: isMine, life: 2 });
-    }
+        document.addEventListener('mousemove', e => {
+            if(document.pointerLockElement === document.body) {
+                Game.inputs.yaw -= e.movementX * 0.002;
+                Game.inputs.pitch -= e.movementY * 0.002;
+                Game.inputs.pitch = Math.max(-1.5, Math.min(1.5, Game.inputs.pitch));
+            }
+        });
+        
+        document.addEventListener('keydown', e => {
+            if(e.code == 'KeyW') Game.inputs.w = 1;
+            if(e.code == 'KeyS') Game.inputs.s = 1;
+            if(e.code == 'KeyA') Game.inputs.a = 1;
+            if(e.code == 'KeyD') Game.inputs.d = 1;
+        });
+        document.addEventListener('keyup', e => {
+            if(e.code == 'KeyW') Game.inputs.w = 0;
+            if(e.code == 'KeyS') Game.inputs.s = 0;
+            if(e.code == 'KeyA') Game.inputs.a = 0;
+            if(e.code == 'KeyD') Game.inputs.d = 0;
+        });
+        
+        // Цикл
+        Game.animate();
+        setInterval(Game.sendMyPos, SETTINGS.syncRate);
+    };
     
-    function createParticles(x, y, z, color) {
-        // Простая вспышка из кубиков
-        for(let i=0; i<8; i++) {
-             const geo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
-             const mat = new THREE.MeshBasicMaterial({ color: color });
-             const p = new THREE.Mesh(geo, mat);
-             p.position.set(x + (Math.random()-0.5), y + (Math.random()-0.5), z + (Math.random()-0.5));
-             scene.add(p);
-             // Затухание через твиннинга нет, просто таймер
-             setTimeout(() => scene.remove(p), 500);
+    // Добавить другого игрока на сцену
+    Game.addPlayer = (id) => {
+        if(Game.players[id]) return; // Уже есть
+        
+        const color = SETTINGS.colors[Object.keys(Game.players).length % SETTINGS.colors.length];
+        
+        // Тело "Аниме" персонажа (простая сборка)
+        const group = new THREE.Group();
+        const body = new THREE.Mesh(new THREE.BoxGeometry(1, 1.5, 0.5), new THREE.MeshBasicMaterial({color: color}));
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.4), new THREE.MeshBasicMaterial({color: 0xffddaa}));
+        head.position.y = 1;
+        
+        group.add(body);
+        group.add(head);
+        
+        Game.scene.add(group);
+        Game.players[id] = group;
+        document.getElementById('players-list').innerText = "Players: " + (Object.keys(Game.players).length + 1);
+    };
+    
+    // Обновить позицию другого игрока
+    Game.updatePlayerPos = (id, data) => {
+        if(!Game.players[id]) Game.addPlayer(id);
+        const p = Game.players[id];
+        p.position.set(data.x, data.y, data.z);
+        p.rotation.y = data.yaw;
+    };
+    
+    Game.removePlayer = (id) => {
+        if(Game.players[id]) {
+            Game.scene.remove(Game.players[id]);
+            delete Game.players[id];
         }
-    }
+    };
+    
+    // Физика движения
+    Game.animate = () => {
+        requestAnimationFrame(Game.animate);
+        
+        // Движение
+        const dir = new THREE.Vector3();
+        dir.z = Game.inputs.w - Game.inputs.s;
+        dir.x = Game.inputs.d - Game.inputs.a;
+        dir.applyAxisAngle(new THREE.Vector3(0,1,0), Game.inputs.yaw);
+        dir.normalize().multiplyScalar(SETTINGS.speed * 0.016);
+        
+        Game.myObj.x += dir.x;
+        Game.myObj.z += dir.z; // -
+        
+        // Камера
+        Game.camera.position.set(Game.myObj.x, Game.myObj.y, Game.myObj.z);
+        Game.camera.rotation.set(Game.inputs.pitch, Game.inputs.yaw, 0, 'YXZ');
+        
+        Game.renderer.render(Game.scene, Game.camera);
+    };
 
-    function updatePhysics(dt) {
-        // Вращение
-        const yawQuat = new THREE.Quaternion();
-        yawQuat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), myPlayer.yaw);
+    // Отправка данных
+    Game.sendMyPos = () => {
+        if(!Game.isPlaying) return;
         
-        // Движение (вектор направления)
-        const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(yawQuat);
-        const right = new THREE.Vector3(1, 0, 0).applyQuaternion(yawQuat);
-        
-        const moveDir = new THREE.Vector3();
-        if (inputs.w) moveDir.add(forward);
-        if (inputs.s) moveDir.sub(forward);
-        if (inputs.d) moveDir.add(right);
-        if (inputs.a) moveDir.sub(right);
-        
-        moveDir.normalize();
+        const packet = {
+            type: 'move', // если я клиент, я шлю 'move', хост поймет
+            type: Game.isHost ? 'update' : 'move', 
+            x: Game.myObj.x,
+            y: Game.myObj.y,
+            z: Game.myObj.z,
+            yaw: Game.inputs.yaw
+        };
 
-        myPlayer.x += moveDir.x * CONF.speed * dt;
-        myPlayer.z += moveDir.z * CONF.speed * dt;
-        
-        // Гравитация и прыжок
-        if (myPlayer.onGround) {
-            myPlayer.vy = 0;
-            if (inputs.space) {
-                myPlayer.vy = CONF.jump;
-                myPlayer.onGround = false;
-            }
+        if (Game.isHost) {
+            // Хост обновляет всех
+             packet.type = 'update';
+             packet.id = Game.myId; // Пометка "Это данные Хоста"
+             // Рассылаем всем
+             for(let cid in Game.clients) { Game.clients[cid].send(packet); }
         } else {
-            myPlayer.vy -= CONF.gravity * dt;
-        }
-        myPlayer.y += myPlayer.vy * dt;
-
-        // Коллизия с полом
-        if (myPlayer.y < 1.5) { // 1.5 - половина высоты игрока
-            myPlayer.y = 1.5;
-            myPlayer.onGround = true;
-        }
-
-        // Применяем к камере
-        camera.position.set(myPlayer.x, myPlayer.y + 1, myPlayer.z); // Глаза выше ног
-        camera.quaternion.setFromEuler(new THREE.Euler(myPlayer.pitch, myPlayer.yaw, 0, 'YXZ'));
-    }
-
-    function updateGame(dt) {
-        updatePhysics(dt);
-        
-        // Интерполяция движения врага
-        if (remotePlayer.mesh) {
-            remotePlayer.mesh.position.x += (remotePlayer.targetX - remotePlayer.mesh.position.x) * 10 * dt;
-            remotePlayer.mesh.position.y += (remotePlayer.targetY - remotePlayer.mesh.position.y) * 10 * dt;
-            remotePlayer.mesh.position.z += (remotePlayer.targetZ - remotePlayer.mesh.position.z) * 10 * dt;
-        }
-
-        // Пули
-        for (let i = bullets.length - 1; i >= 0; i--) {
-            const b = bullets[i];
-            b.mesh.position.addScaledVector(b.velocity, dt);
-            b.life -= dt;
-
-            let hit = false;
-
-            // Попадание Моей пули во врага
-            if (b.isMine && remotePlayer.mesh) {
-                 const dist = b.mesh.position.distanceTo(remotePlayer.mesh.position);
-                 if (dist < 1.5) { // Попал!
-                     hit = true;
-                     createParticles(b.mesh.position.x, b.mesh.position.y, b.mesh.position.z, 0xffff00);
-                     Net.sendHit(); // Говорим врагу, что он получил леща
-                 }
-            }
-
-            // Удаление пули
-            if (b.life <= 0 || b.mesh.position.y < 0 || hit) {
-                scene.remove(b.mesh);
-                bullets.splice(i, 1);
+            // Клиент шлет только Хосту
+            if(Game.hostConn && Game.hostConn.open) {
+                packet.type = 'move';
+                Game.hostConn.send(packet);
             }
         }
-        
-        // Сеть - отправка пакетов (примерно раз в 50мс чтобы не забить канал)
-        // Для упрощения шлем каждый кадр, но PeerJS сам буферизирует
-        Net.sendUpdate();
-    }
-
-    function updateUI() {
-        const fill = document.getElementById('hp-bar-fill');
-        fill.style.width = myPlayer.hp + "%";
-    }
-
-    function log(txt) {
-        document.getElementById('log').innerText = txt;
-    }
-
-    function loop() {
-        requestAnimationFrame(loop);
-        const dt = Math.min(clock.getDelta(), 0.1);
-        
-        if (isGameRunning) {
-            updateGame(dt);
-        }
-        
-        renderer.render(scene, camera);
-    }
-
-    // --- СТАРТ ---
-    init();
-
+    };
 </script>
 </body>
 </html>
