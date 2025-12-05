@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Browser MOBA</title>
+    <!-- Подключаем PeerJS для мультиплеера без сервера -->
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background: #1a1a1a; color: white; font-family: 'Arial', sans-serif; user-select: none; }
+        #menu {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); display: flex; flex-direction: column;
+            align-items: center; justify-content: center; z-index: 100;
+        }
+        .btn {
+            padding: 15px 30px; font-size: 20px; margin: 10px; cursor: pointer;
+            background: #444; color: white; border: 2px solid #666; transition: 0.3s;
+        }
+        .btn:hover { background: #666; border-color: #888; }
+        input { padding: 15px; font-size: 20px; width: 300px; text-align: center; }
+        #ui { position: absolute; bottom: 0; width: 100%; height: 120px; background: #222; border-top: 2px solid #444; display: none; }
+        #stats { position: absolute; left: 20px; top: 20px; font-size: 18px; }
+        .skill-bar {
+            display: flex; justify-content: center; gap: 20px; margin-top: 20px;
+        }
+        .skill {
+            width: 60px; height: 60px; background: #333; border: 2px solid #555;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            position: relative; font-weight: bold; font-size: 24px;
+        }
+        .skill span { font-size: 12px; margin-top: 5px; color: #aaa; }
+        .cooldown-overlay {
+            position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(0,0,0,0.8);
+            transition: height 0.1s linear;
+        }
+        #gameInfo { position: absolute; top: 10px; left: 10px; z-index: 50; pointer-events: none; text-shadow: 1px 1px 0 #000; }
+        canvas { display: block; cursor: crosshair; }
+        #minimap-container {
+            position: absolute; bottom: 140px; left: 20px;
+            width: 150px; height: 150px; border: 2px solid #555; background: #000;
+        }
+    </style>
+</head>
+<body>
+
+<!-- МЕНЮ -->
+<div id="menu">
+    <h1>BROWSER MOBA P2P</h1>
+    <h3 id="status">Готов к подключению...</h3>
+    <button class="btn" onclick="hostGame()">СОЗДАТЬ ИГРУ (HOST)</button>
+    <div style="margin: 20px; display: flex; align-items: center;">
+        <input type="text" id="hostIdInput" placeholder="Вставь ID хоста сюда">
+        <button class="btn" onclick="joinGame()">ПОДКЛЮЧИТЬСЯ</button>
+    </div>
+    <p style="color: #aaa; font-size: 14px;">Используется PeerJS. Для игры нужен интернет.</p>
+</div>
+
+<!-- ИНТЕРФЕЙС -->
+<div id="gameInfo"></div>
+<div id="minimap-container"><canvas id="minimap"></canvas></div>
+
+<div id="ui">
+    <div id="stats">HP: 0/0<br>MP: 0/0</div>
+    <div class="skill-bar">
+        <div class="skill" id="skillQ">Q<span>Bolt</span><div class="cooldown-overlay" id="cdQ" style="height: 0%"></div></div>
+        <div class="skill" id="skillW">W<span>Heal</span><div class="cooldown-overlay" id="cdW" style="height: 0%"></div></div>
+        <div class="skill" id="skillE">E<span>Nova</span><div class="cooldown-overlay" id="cdE" style="height: 0%"></div></div>
+    </div>
+</div>
+
+<canvas id="gameCanvas"></canvas>
+
+<script>
+// =================================================================================
+// КОНФИГУРАЦИЯ
+// =================================================================================
+const MAP_WIDTH = 2500;
+const MAP_HEIGHT = 2500;
+const VIEWPORT_W = window.innerWidth;
+const VIEWPORT_H = window.innerHeight;
+
+// Команды
+const TEAM_RADIANT = 1; // Зеленые (низ-лево)
+const TEAM_DIRE = 2;    // Красные (верх-право)
+
+// Цвета
+const COLORS = {
+    [TEAM_RADIANT]: '#00ff00',
+    [TEAM_DIRE]: '#ff0000',
+    'neutral': '#ffff00',
+    'bg': '#2a2a2a',
+    'grid': '#333'
+};
+
+// =================================================================================
+// СЕТЕВАЯ ЧАСТЬ (PEERJS)
+// =================================================================================
+let peer = null;
+let conn = null; // Для клиента - соединение с хостом
+let connections = []; // Для хоста - список игроков
+let myId = null;
+let isHost = false;
+let myPlayerId = null; // ID внутри игры (не PeerID)
+
+// Инициализация Peer
+function initPeer() {
+    peer = new Peer(null, { debug: 2 });
+    
+    peer.on('open', (id) => {
+        myId = id;
+        console.log('My Peer ID is: ' + id);
+    });
+
+    peer.on('connection', (c) => {
+        if (isHost) {
+            handleConnection(c);
+        } else {
+            // Если мы не хост, но к нам ломятся - отбой
+            c.close();
+        }
+    });
+
+    peer.on('error', (err) => {
+        alert("Ошибка сети: " + err);
+    });
+}
+
+initPeer();
+
+// Хост создает игру
+function hostGame() {
+    isHost = true;
+    document.getElementById('status').innerText = "Создаем сервер...";
+    
+    // Генерируем себе игрока
+    myPlayerId = generateUID();
+    spawnHero(myPlayerId, TEAM_RADIANT, "Host Player");
+    
+    document.getElementById('menu').style.display = 'none';
+    document.getElementById('ui').style.display = 'block';
+    
+    // Показываем ID чтобы копировать
+    document.getElementById('gameInfo').innerHTML = `
+        ID ИГРЫ: <b style="user-select: text; background: #000; padding: 5px;">${myId}</b>
+        <br>Скопируй и скинь другу!`;
+    
+    startGameLoop();
+}
+
+// Клиент подключается
+function joinGame() {
+    const hostId = document.getElementById('hostIdInput').value.trim();
+    if (!hostId) return alert("Введите ID!");
+
+    isHost = false;
+    document.getElementById('status').innerText = "Подключение...";
+    
+    conn = peer.connect(hostId);
+
+    conn.on('open', () => {
+        document.getElementById('status').innerText = "Подключено! Ожидание игры...";
+        document.getElementById('menu').style.display = 'none';
+        document.getElementById('ui').style.display = 'block';
+        
+        // Отправляем приветствие
+        conn.send({ type: 'HELLO' });
+    });
+
+    conn.on('data', (data) => {
+        handlePacket(data);
+    });
+    
+    conn.on('close', () => {
+        alert("Хост отключился!");
+        location.reload();
+    });
+
+    startGameLoop();
+}
+
+// (Только для Хоста) Обработка входящего подключения
+function handleConnection(c) {
+    connections.push(c);
+    
+    c.on('open', () => {
+        console.log("Новый игрок подключился!");
+    });
+    
+    c.on('data', (data) => {
+        if (data.type === 'HELLO') {
+            // Создаем героя новому игроку
+            const pid = generateUID();
+            // Чередуем команды
+            const team = (Object.keys(players).length % 2 === 0) ? TEAM_RADIANT : TEAM_DIRE;
+            spawnHero(pid, team, "Player " + (Object.keys(players).length + 1));
+            
+            // Отправляем ему его ID
+            c.send({ type: 'WELCOME', pid: pid, mapSize: [MAP_WIDTH, MAP_HEIGHT] });
+        }
+        
+        if (data.type === 'INPUT') {
+            // Хост принимает инпут и двигает героя игрока
+            processInput(data.pid, data.input);
+        }
+    });
+    
+    c.on('close', () => {
+        console.log("Игрок вышел");
+    });
+}
+
+// Клиент обрабатывает данные от хоста
+function handlePacket(data) {
+    if (data.type === 'WELCOME') {
+        myPlayerId = data.pid;
+        document.getElementById('gameInfo').innerText = "Вы подключены! ID: " + myPlayerId;
+    }
+    
+    if (data.type === 'STATE') {
+        // Полное обновление состояния мира
+        gameState = data.state;
+        clientTime = Date.now();
+    }
+}
+
+// =================================================================================
+// ИГРОВАЯ ЛОГИКА (SHARED + HOST AUTHORITATIVE)
+// =================================================================================
+
+// Уникальные ID
+let uidCounter = 0;
+function generateUID() { return ++uidCounter; }
+
+// Состояние игры (сериализуется и отправляется)
+let gameState = {
+    entities: {}, // Все объекты
+    time: 0
+};
+
+// Локальные ссылки (для удобства)
+let players = {}; // id -> heroEntityId
+let localInput = { targetX: 0, targetY: 0, castQ: false, castW: false, castE: false };
+
+// Базовый класс сущности
+class Entity {
+    constructor(id, x, y, radius, type, team) {
+        this.id = id;
+        this.x = x;
+        this.y = y;
+        this.radius = radius;
+        this.type = type; // 'hero', 'creep', 'tower', 'nexus', 'proj'
+        this.team = team;
+        this.hp = 100;
+        this.maxHp = 100;
+        this.dead = false;
+        
+        // Для движения
+        this.tx = x;
+        this.ty = y;
+        this.speed = 0;
+    }
+}
+
+function spawnHero(pid, team, name) {
+    const eid = generateUID();
+    const spawn = team === TEAM_RADIANT ? {x: 200, y: 200} : {x: MAP_WIDTH-200, y: MAP_HEIGHT-200};
+    
+    const hero = new Entity(eid, spawn.x, spawn.y, 25, 'hero', team);
+    hero.pid = pid; // Связь с игроком
+    hero.name = name;
+    hero.maxHp = 600;
+    hero.hp = 600;
+    hero.mana = 200;
+    hero.maxMana = 200;
+    hero.speed = 200; // px/sec
+    hero.cdQ = 0; hero.maxCdQ = 5;
+    hero.cdW = 0; hero.maxCdW = 10;
+    hero.cdE = 0; hero.maxCdE = 2;
+    hero.respawnTimer = 0;
+    
+    gameState.entities[eid] = hero;
+    players[pid] = eid;
+    return hero;
+}
+
+function spawnCreep(team, lane) {
+    const eid = generateUID();
+    const spawn = team === TEAM_RADIANT ? {x: 250, y: 250} : {x: MAP_WIDTH-250, y: MAP_HEIGHT-250};
+    const creep = new Entity(eid, spawn.x, spawn.y, 15, 'creep', team);
+    creep.maxHp = 150;
+    creep.hp = 150;
+    creep.speed = 120;
+    creep.damage = 10;
+    creep.attackRange = 60;
+    creep.attackCd = 0;
+    
+    // Путь движения (вейпоинты)
+    if (team === TEAM_RADIANT) creep.waypoints = [{x: MAP_WIDTH-250, y: MAP_HEIGHT-250}];
+    else creep.waypoints = [{x: 250, y: 250}];
+    
+    gameState.entities[eid] = creep;
+}
+
+function spawnTower(x, y, team) {
+    const eid = generateUID();
+    const t = new Entity(eid, x, y, 40, 'tower', team);
+    t.maxHp = 1000;
+    t.hp = 1000;
+    t.damage = 50;
+    t.attackRange = 400;
+    t.attackCd = 0;
+    gameState.entities[eid] = t;
+}
+
+function spawnNexus(x, y, team) {
+    const eid = generateUID();
+    const n = new Entity(eid, x, y, 60, 'nexus', team);
+    n.maxHp = 3000;
+    n.hp = 3000;
+    gameState.entities[eid] = n;
+}
+
+function spawnProjectile(ownerId, x, y, targetId, type) {
+    const eid = generateUID();
+    const p = new Entity(eid, x, y, 5, 'proj', 0);
+    p.ownerId = ownerId;
+    p.targetId = targetId; // Самонаведение для простоты
+    p.speed = 500;
+    p.damage = 40;
+    p.pType = type; // 'auto', 'skill'
+    gameState.entities[eid] = p;
+}
+
+// Инициализация карты (только хост)
+function initMap() {
+    spawnNexus(150, 150, TEAM_RADIANT);
+    spawnNexus(MAP_WIDTH-150, MAP_HEIGHT-150, TEAM_DIRE);
+    
+    // Башни
+    spawnTower(600, 600, TEAM_RADIANT);
+    spawnTower(1000, 1000, TEAM_RADIANT);
+    spawnTower(MAP_WIDTH-600, MAP_HEIGHT-600, TEAM_DIRE);
+    spawnTower(MAP_WIDTH-1000, MAP_HEIGHT-1000, TEAM_DIRE);
+}
+
+if (isHost) initMap();
+
+// =================================================================================
+// ОБРАБОТКА ИНПУТА (HOST SIDE)
+// =================================================================================
+
+function processInput(pid, input) {
+    const eid = players[pid];
+    if (!eid) return;
+    const hero = gameState.entities[eid];
+    if (!hero || hero.dead) return;
+
+    // Движение
+    if (input.type === 'MOVE') {
+        hero.tx = input.x;
+        hero.ty = input.y;
+    }
+    
+    // Скиллы
+    if (input.type === 'SKILL_Q' && hero.cdQ <= 0 && hero.mana >= 20) {
+        hero.cdQ = hero.maxCdQ;
+        hero.mana -= 20;
+        // Найти ближайшего врага в точке
+        const target = findTargetAt(input.x, input.y, hero.team);
+        if (target) spawnProjectile(hero.id, hero.x, hero.y, target.id, 'Q');
+    }
+    
+    if (input.type === 'SKILL_W' && hero.cdW <= 0 && hero.mana >= 30) {
+        // Лечение
+        hero.cdW = hero.maxCdW;
+        hero.mana -= 30;
+        hero.hp = Math.min(hero.hp + 100, hero.maxHp);
+    }
+}
+
+function findTargetAt(x, y, myTeam) {
+    let best = null;
+    let minDist = 100; // Радиус поиска
+    for (let id in gameState.entities) {
+        let e = gameState.entities[id];
+        if (e.dead || e.team === myTeam || e.type === 'proj') continue;
+        let d = dist(x, y, e.x, e.y);
+        if (d < minDist) {
+            minDist = d;
+            best = e;
+        }
+    }
+    return best;
+}
+
+// =================================================================================
+// ИГРОВОЙ ЦИКЛ (UPDATE)
+// =================================================================================
+let lastTime = Date.now();
+let creepTimer = 0;
+
+function gameUpdate() {
+    if (!isHost) return; // Клиент не считает физику
+    
+    const now = Date.now();
+    const dt = (now - lastTime) / 1000;
+    lastTime = now;
+    
+    // Спавн крипов (каждые 30 сек)
+    creepTimer -= dt;
+    if (creepTimer <= 0) {
+        creepTimer = 30;
+        for (let i=0; i<3; i++) {
+            setTimeout(() => spawnCreep(TEAM_RADIANT), i*500);
+            setTimeout(() => spawnCreep(TEAM_DIRE), i*500);
+        }
+    }
+    
+    // Обновление сущностей
+    for (let id in gameState.entities) {
+        let e = gameState.entities[id];
+        if (e.dead) continue;
+        
+        // Герои (Кулдауны, Реген)
+        if (e.type === 'hero') {
+            if (e.cdQ > 0) e.cdQ -= dt;
+            if (e.cdW > 0) e.cdW -= dt;
+            if (e.cdE > 0) e.cdE -= dt;
+            if (e.hp < e.maxHp) e.hp += 1 * dt;
+            if (e.mana < e.maxMana) e.mana += 2 * dt;
+            
+            // Движение
+            moveEntity(e, e.tx, e.ty, dt);
+        }
+        
+        // Крипы (AI)
+        if (e.type === 'creep') {
+            // Ищем врага
+            let target = findClosestEnemy(e, e.attackRange);
+            if (target) {
+                if (e.attackCd <= 0) {
+                    target.hp -= e.damage;
+                    e.attackCd = 1.5;
+                }
+            } else {
+                // Идем по вейпоинтам
+                if (e.waypoints.length > 0) {
+                    moveEntity(e, e.waypoints[0].x, e.waypoints[0].y, dt);
+                    if (dist(e.x, e.y, e.waypoints[0].x, e.waypoints[0].y) < 10) {
+                        e.waypoints.shift();
+                    }
+                }
+            }
+            if (e.attackCd > 0) e.attackCd -= dt;
+        }
+        
+        // Башни
+        if (e.type === 'tower') {
+             let target = findClosestEnemy(e, e.attackRange);
+             if (target && e.attackCd <= 0) {
+                 spawnProjectile(e.id, e.x, e.y, target.id, 'auto');
+                 e.attackCd = 1.5;
+             }
+             if (e.attackCd > 0) e.attackCd -= dt;
+        }
+        
+        // Снаряды
+        if (e.type === 'proj') {
+            let target = gameState.entities[e.targetId];
+            if (!target || target.dead) {
+                e.dead = true;
+            } else {
+                // Летим к цели
+                let dx = target.x - e.x;
+                let dy = target.y - e.y;
+                let d = Math.sqrt(dx*dx + dy*dy);
+                
+                if (d < 10) {
+                    target.hp -= e.damage;
+                    e.dead = true;
+                } else {
+                    e.x += (dx/d) * e.speed * dt;
+                    e.y += (dy/d) * e.speed * dt;
+                }
+            }
+        }
+        
+        // Проверка смерти
+        if (e.hp <= 0 && !e.dead) {
+            e.hp = 0;
+            e.dead = true;
+            // Если герой умер - таймер респавна
+            if (e.type === 'hero') {
+                 // Герой не удаляется, просто прячется
+                 e.x = -1000; e.y = -1000;
+                 e.respawnTimer = 5;
+            }
+        }
+        
+        // Респавн героя
+        if (e.type === 'hero' && e.dead) {
+            e.respawnTimer -= dt;
+            if (e.respawnTimer <= 0) {
+                e.dead = false;
+                e.hp = e.maxHp;
+                e.mana = e.maxMana;
+                let spawn = e.team === TEAM_RADIANT ? {x:200,y:200} : {x:MAP_WIDTH-200,y:MAP_HEIGHT-200};
+                e.x = spawn.x; e.y = spawn.y;
+                e.tx = spawn.x; e.ty = spawn.y;
+            }
+        }
+    }
+    
+    // Очистка мусора
+    for (let id in gameState.entities) {
+        if (gameState.entities[id].dead && gameState.entities[id].type !== 'hero') {
+            delete gameState.entities[id];
+        }
+    }
+
+    // Отправка состояния клиентам
+    broadcastState();
+}
+
+function moveEntity(e, tx, ty, dt) {
+    let dx = tx - e.x;
+    let dy = ty - e.y;
+    let d = Math.sqrt(dx*dx + dy*dy);
+    if (d > 5) {
+        let moveDist = e.speed * dt;
+        if (moveDist > d) moveDist = d;
+        e.x += (dx/d) * moveDist;
+        e.y += (dy/d) * moveDist;
+    }
+}
+
+function findClosestEnemy(me, range) {
+    let closest = null;
+    let minDist = range;
+    for (let id in gameState.entities) {
+        let other = gameState.entities[id];
+        if (other.id !== me.id && other.team !== me.team && other.team !== 0 && !other.dead && other.type !== 'proj') {
+            let d = dist(me.x, me.y, other.x, other.y);
+            if (d < minDist) {
+                minDist = d;
+                closest = other;
+            }
+        }
+    }
+    return closest;
+}
+
+function dist(x1, y1, x2, y2) { return Math.sqrt((x2-x1)**2 + (y2-y1)**2); }
+
+function broadcastState() {
+    const data = { type: 'STATE', state: gameState };
+    // Шлем всем подключенным
+    connections.forEach(c => {
+        if (c.open) c.send(data);
+    });
+}
+
+// =================================================================================
+// РЕНДЕР И КЛИЕНТ
+// =================================================================================
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const minimapCanvas = document.getElementById('minimap');
+const mmCtx = minimapCanvas.getContext('2d');
+
+let cameraX = 0, cameraY = 0;
+
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    minimapCanvas.width = 150;
+    minimapCanvas.height = 150;
+}
+window.addEventListener('resize', resize);
+resize();
+
+function startGameLoop() {
+    setInterval(() => {
+        if (isHost) gameUpdate();
+    }, 1000 / 60); // 60 TPS физика
+    
+    requestAnimationFrame(renderLoop);
+}
+
+function renderLoop() {
+    // Очистка
+    ctx.fillStyle = COLORS.bg;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Камера на герое
+    let myHero = null;
+    if (myPlayerId && players[myPlayerId]) {
+        myHero = gameState.entities[players[myPlayerId]];
+    }
+    
+    if (myHero) {
+        cameraX = myHero.x - canvas.width / 2;
+        cameraY = myHero.y - canvas.height / 2;
+    }
+    // Кламп камеры
+    cameraX = Math.max(0, Math.min(cameraX, MAP_WIDTH - canvas.width));
+    cameraY = Math.max(0, Math.min(cameraY, MAP_HEIGHT - canvas.height));
+    
+    ctx.save();
+    ctx.translate(-cameraX, -cameraY);
+    
+    // Сетка земли
+    ctx.strokeStyle = COLORS.grid;
+    ctx.lineWidth = 1;
+    for(let x=0; x<MAP_WIDTH; x+=100) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,MAP_HEIGHT); ctx.stroke(); }
+    for(let y=0; y<MAP_HEIGHT; y+=100) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(MAP_WIDTH,y); ctx.stroke(); }
+    
+    // Рендер сущностей
+    // Сортировка чтобы снаряды были сверху
+    const entList = Object.values(gameState.entities).sort((a,b) => (a.type==='proj'?1:0) - (b.type==='proj'?1:0));
+    
+    for (let e of entList) {
+        // Пропускаем если за экраном
+        if (e.x < cameraX - 50 || e.x > cameraX + canvas.width + 50) continue;
+        if (e.y < cameraY - 50 || e.y > cameraY + canvas.height + 50) continue;
+        
+        // Цвет
+        let color = COLORS[e.team] || '#fff';
+        if (e.type === 'nexus') color = '#ff00ff'; // Трон
+        if (e.type === 'tower') color = (e.team === TEAM_RADIANT) ? '#afa' : '#faa';
+        if (e.type === 'proj') color = '#ffff00';
+        
+        // Отрисовка тела
+        ctx.beginPath();
+        if (e.type === 'tower' || e.type === 'nexus') {
+            ctx.fillStyle = color;
+            ctx.fillRect(e.x - e.radius, e.y - e.radius, e.radius*2, e.radius*2);
+        } else {
+            ctx.fillStyle = color;
+            ctx.arc(e.x, e.y, e.radius, 0, Math.PI*2);
+            ctx.fill();
+        }
+        
+        // Обводка героя игрока
+        if (e.id === (myHero ? myHero.id : -1)) {
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+        }
+        
+        // Имя
+        if (e.type === 'hero' && e.name) {
+            ctx.fillStyle = '#fff';
+            ctx.font = '12px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(e.name, e.x, e.y - e.radius - 15);
+        }
+        
+        // HP Bar
+        if (e.type !== 'proj') {
+            const hpPct = e.hp / e.maxHp;
+            ctx.fillStyle = '#000';
+            ctx.fillRect(e.x - 20, e.y - e.radius - 10, 40, 5);
+            ctx.fillStyle = (e.team === TEAM_RADIANT ? '#0f0' : '#f00');
+            ctx.fillRect(e.x - 20, e.y - e.radius - 10, 40 * hpPct, 5);
+        }
+    }
+    
+    ctx.restore();
+    
+    // UI Updates
+    updateUI(myHero);
+    drawMinimap();
+    
+    requestAnimationFrame(renderLoop);
+}
+
+function updateUI(hero) {
+    if (!hero) return;
+    document.getElementById('stats').innerHTML = 
+        `HP: ${Math.floor(hero.hp)}/${hero.maxHp}<br>MP: ${Math.floor(hero.mana)}/${hero.maxMana}`;
+    
+    // Cooldowns visuals
+    setCd('cdQ', hero.cdQ, hero.maxCdQ);
+    setCd('cdW', hero.cdW, hero.maxCdW);
+    setCd('cdE', hero.cdE, hero.maxCdE);
+}
+
+function setCd(elmId, current, max) {
+    const el = document.getElementById(elmId);
+    if (!el) return;
+    const pct = (current > 0) ? (current / max) * 100 : 0;
+    el.style.height = pct + '%';
+}
+
+function drawMinimap() {
+    mmCtx.fillStyle = '#000';
+    mmCtx.fillRect(0,0,150,150);
+    
+    const sx = 150 / MAP_WIDTH;
+    const sy = 150 / MAP_HEIGHT;
+    
+    for (let id in gameState.entities) {
+        let e = gameState.entities[id];
+        mmCtx.fillStyle = COLORS[e.team] || '#888';
+        if (e.type === 'hero') mmCtx.fillStyle = '#fff';
+        mmCtx.beginPath();
+        mmCtx.arc(e.x * sx, e.y * sy, (e.type==='hero'?3:1.5), 0, Math.PI*2);
+        mmCtx.fill();
+    }
+    
+    // Рамка камеры
+    mmCtx.strokeStyle = '#fff';
+    mmCtx.lineWidth = 1;
+    mmCtx.strokeRect(cameraX * sx, cameraY * sy, canvas.width * sx, canvas.height * sy);
+}
+
+// =================================================================================
+// УПРАВЛЕНИЕ (КЛИЕНТ)
+// =================================================================================
+window.addEventListener('contextmenu', e => e.preventDefault());
+
+window.addEventListener('mousedown', (e) => {
+    if (!myPlayerId || (!isHost && !conn)) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left + cameraX;
+    const y = e.clientY - rect.top + cameraY;
+    
+    if (e.button === 2) { // ПКМ - Движение
+        sendInput({ type: 'MOVE', x: x, y: y });
+    }
+});
+
+window.addEventListener('keydown', (e) => {
+    if (!myPlayerId) return;
+    
+    // Координаты мыши нужны для скиллов, но здесь упростим:
+    // Скиллы летят туда, где курсор был последний раз (надо бы трекать mousemove)
+    // Для простоты: скилл летит в центр экрана + оффсет, или по движению
+    // Лучше трекать mousemove. Добавим глобальные mouseX/Y
+});
+
+let mouseX=0, mouseY=0;
+window.addEventListener('mousemove', e => {
+    const rect = canvas.getBoundingClientRect();
+    mouseX = e.clientX - rect.left + cameraX;
+    mouseY = e.clientY - rect.top + cameraY;
+});
+
+window.addEventListener('keydown', e => {
+    if (e.code === 'KeyQ') sendInput({ type: 'SKILL_Q', x: mouseX, y: mouseY });
+    if (e.code === 'KeyW') sendInput({ type: 'SKILL_W', x: mouseX, y: mouseY });
+    if (e.code === 'KeyE') sendInput({ type: 'SKILL_E', x: mouseX, y: mouseY });
+});
+
+function sendInput(payload) {
+    if (isHost) {
+        processInput(myPlayerId, payload);
+    } else if (conn && conn.open) {
+        conn.send({ type: 'INPUT', pid: myPlayerId, input: payload });
+    }
+}
+
+</script>
+</body>
+</html>
